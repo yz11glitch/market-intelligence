@@ -1,4 +1,3 @@
-import html
 import threading
 from typing import Any
 
@@ -13,7 +12,12 @@ from src.cli.commands import (
 )
 from src.config.settings import settings
 from src.delivery.telegram import send_telegram_message
-from src.utils.telegram_formatting import format_brief_for_telegram
+from src.utils.telegram_formatting import (
+    format_brief_for_telegram,
+    format_levels_for_telegram,
+    format_tech_for_telegram,
+    format_why_for_telegram,
+)
 
 app = FastAPI()
 
@@ -27,28 +31,6 @@ def _allowed_chat_ids() -> set[str]:
 
 def _is_group_chat(chat_type: str) -> bool:
     return chat_type in {"group", "supergroup"}
-
-
-def _format_why_for_telegram(result: dict[str, str]) -> str:
-    return (
-        f"<b>{html.escape(result['header'])}</b>\n"
-        f"{html.escape(result['trend_line'])}\n\n"
-        f"{html.escape(result['explanation'])}"
-    )
-
-
-def _format_levels_for_telegram(result: dict[str, str]) -> str:
-    return (
-        f"<b>{html.escape(result['header'])}</b>\n\n"
-        f"<pre>{html.escape(result['table'])}</pre>"
-    )
-
-
-def _format_tech_for_telegram(result: dict[str, str]) -> str:
-    return (
-        f"<b>{html.escape(result['header'])}</b>\n\n"
-        f"<pre>{html.escape(result['text'])}</pre>"
-    )
 
 
 def _help_text() -> str:
@@ -76,7 +58,7 @@ def _process_command(chat_id: str, parsed: ParsedCommand) -> None:
         symbol = parsed.symbol
         send_telegram_message(f"Checking {symbol}...", chat_id=chat_id)
         result = generate_why_text(symbol)
-        send_telegram_message(_format_why_for_telegram(result), parse_mode="HTML", chat_id=chat_id)
+        send_telegram_message(format_why_for_telegram(result), parse_mode="HTML", chat_id=chat_id)
         return
 
     if parsed.command == "levels":
@@ -84,7 +66,7 @@ def _process_command(chat_id: str, parsed: ParsedCommand) -> None:
             raise ValueError("Use: /levels NVDA")
         symbol = parsed.symbol
         result = generate_levels_text(symbol)
-        send_telegram_message(_format_levels_for_telegram(result), parse_mode="HTML", chat_id=chat_id)
+        send_telegram_message(format_levels_for_telegram(result), parse_mode="HTML", chat_id=chat_id)
         return
 
     if parsed.command == "tech":
@@ -92,7 +74,7 @@ def _process_command(chat_id: str, parsed: ParsedCommand) -> None:
             raise ValueError("Use: /tech XRP")
         symbol = parsed.symbol
         result = generate_tech_text(symbol)
-        send_telegram_message(_format_tech_for_telegram(result), parse_mode="HTML", chat_id=chat_id)
+        send_telegram_message(format_tech_for_telegram(result), parse_mode="HTML", chat_id=chat_id)
         return
 
     if parsed.command == "help":
