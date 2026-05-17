@@ -2,6 +2,7 @@ from src.analysis.movers import (
     get_technical_events, classify_move, get_recent_trend,
     get_movement_severity, get_pullback_from_high_context,
 )
+from src.utils.formatting import fmt_price
 
 
 def build_asset_facts(
@@ -22,11 +23,15 @@ def build_asset_facts(
     The LLM receives only what is in this dict — no open-ended retrieval.
     multi_window / explanation_window are populated for /why, omitted for brief.
     """
+    from src.utils.formatting import fmt_pct  # local import to avoid circular dep
     facts: dict = {
         "symbol": symbol,
         "asset_type": asset_type,
         "current_price": price_summary.get("price"),
+        "price": price_summary.get("price"),
+        "formatted_price": fmt_price(price_summary.get("price")),
         "change_pct_1d": price_summary.get("change_pct"),
+        "formatted_change_pct": fmt_pct(price_summary.get("change_pct")),
         "technical_events": get_technical_events(technicals),
         "news": news,
     }

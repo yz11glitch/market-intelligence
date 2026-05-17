@@ -4,12 +4,29 @@ from datetime import datetime
 
 SYSTEM_BRIEF = """\
 You are a market intelligence assistant writing a Telegram-friendly daily market brief.
-You receive structured data with multi-timeframe moves, movement severity, pullback context, technicals, and recent headlines.
+You receive structured data with multi-timeframe moves, movement severity, and recent headlines.
 
 Style goals:
 - concise, clear, source-grounded, cautious, multi-timeframe aware
 - no fake certainty, no over-causal language for tiny/noise moves
 - target 170-230 words (hard cap: 250 words)
+
+Priority order for /brief content — use in this order only:
+1) major news / direct catalysts
+2) earnings / upcoming events
+3) analyst upgrades/downgrades
+4) macro context (rates, Fed, CPI, jobs, risk-on/risk-off)
+5) sector themes
+6) crypto context (ETF flows, regulation, liquidations, exchange/news events)
+7) price movement context only if nothing else applies
+
+ABSOLUTE HARD RULES — NO EXCEPTIONS:
+- NEVER mention moving averages: not "50D MA", "200D MA", "50-day MA", "200-day MA", "MA", "moving average"
+- NEVER mention support or resistance
+- NEVER mention 7-day high, 7-day low, 7D high, 7D low, 20D high, 20D low, near recent high, near recent low
+- NEVER mention breakout, breakdown, technical level, watch level, key level
+- NEVER do any form of technical analysis
+- /brief is STRICTLY news, fundamentals, macro, catalysts, earnings, sector themes, crypto flows/regulation
 
 Required format (exact section order, no extra sections):
 INDEXES
@@ -27,16 +44,22 @@ WATCH NEXT
 Rules:
 - Never include a "Summary" heading or summary line.
 - No confidence tags in /brief.
-- Keep bullets one line each; no long paragraphs.
+- Keep each asset item short with this exact shape:
+  - [TICKER] [PRICE] — [MOVE%]
+    1) [short news/macro reason — NO technical language]
+    2) [short news/macro reason — NO technical language]
 - Bullet limits: INDEXES max 2, STOCKS max 4, CRYPTO max 4, WATCH NEXT max 3.
 - End output immediately after WATCH NEXT bullets.
-- For noise 1D moves: do NOT claim cause/effect. Use wording like "little changed today, but ...".
-- For CRYPTO with `brief_guidance.is_1d_noise=true`, use this pattern:
-  "[SYM] little changed today ([1D]%), but [7D/30D/pullback/technical context]. No clear direct catalyst found."
+- Every INDEXES/STOCKS/CRYPTO bullet must include current price and move% in the header line.
+  Use `formatted_price` for price. Use `formatted_change_pct` for MOVE%.
+  Examples: "VOO $450.12 — -1.21%", "NVDA $225.32 — -4.4%", "BTC $78,359 — +0.2%"
+  The MOVE% MUST appear on the header line after the dash, not inside the reason lines.
+- For noise 1D moves: do NOT claim cause/effect. Use wording like "little changed today" plus context.
 - Do NOT attach specific headline causality to noise 1D crypto moves.
-- Prioritize meaningful context per asset: major 1D, moderate/major 3D/7D, strong 30D trend, pullback from high, key level, upcoming event.
+- Prioritize meaningful context per asset: major news/catalyst, earnings/events, analyst calls, macro backdrop, sector theme, then price context.
 - Use direct causal wording ("driven by", "after", "on", "due to") ONLY when headline evidence clearly supports it.
-- If evidence is weaker, use "context includes", "may reflect", or "No clear direct catalyst found."
+- If evidence is weaker, use "context includes" or "may reflect".
+- Avoid repeating "No clear direct catalyst found" across many bullets; use at most once in the whole CRYPTO section.
 - For crypto specifically, avoid attributing tiny 1D moves to headlines.
 - Mention short source labels only when helpful (headline title/snippet), no URLs.
 """
@@ -115,6 +138,18 @@ RULES:
 """
 
 
+_BRIEF_TECH_KEYS = frozenset({
+    "technical_events", "technicals",
+    "vs_ma50_pct", "vs_ma200_pct",
+    "volume_ratio_20d", "broke_20d_high", "broke_20d_low",
+    "recent_context", "pullback_context",
+})
+
+
+def _strip_tech_for_brief(d: dict) -> dict:
+    return {k: v for k, v in d.items() if k not in _BRIEF_TECH_KEYS}
+
+
 def build_brief_prompt(
     index_facts: list[dict],
     stock_movers: list[dict],
@@ -123,15 +158,17 @@ def build_brief_prompt(
 ) -> str:
     payload = {
         "date": datetime.now().strftime("%Y-%m-%d"),
-        "indexes": index_facts,
-        "stock_movers": stock_movers,
-        "crypto": crypto_facts,
+        "indexes": [_strip_tech_for_brief(f) for f in index_facts],
+        "stock_movers": [_strip_tech_for_brief(f) for f in stock_movers],
+        "crypto": [_strip_tech_for_brief(f) for f in crypto_facts],
         "upcoming_earnings": events,
     }
     return (
         "Write the daily market brief using the exact required format and tone. "
         "Do not over-explain noise 1D moves; use multi-timeframe context. "
-        "If a bullet would exceed one line, shorten it.\n\n"
+        "Use two short numbered reason lines per asset. "
+        "CRITICAL: Zero technical analysis in any reason line — no MAs, no support/resistance, "
+        "no highs/lows, no breakouts. News, fundamentals, macro, events only.\n\n"
         + json.dumps(payload, indent=2, default=str)
     )
 

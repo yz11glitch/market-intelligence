@@ -9,7 +9,7 @@ stocks:
   - GOOGL
 
 etfs:
-  - SPY
+  - VOO
   - QQQ
   - DIA
   - IWM
