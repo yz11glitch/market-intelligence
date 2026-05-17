@@ -221,3 +221,81 @@ def build_why_prompt(facts: dict) -> str:
         "Use only the data provided below:\n\n"
         + json.dumps(facts, indent=2, default=str)
     )
+
+
+SYSTEM_TELEGRAM_WHY = """\
+You are a market intelligence assistant writing a concise Telegram /why message.
+Write in plain human-readable narrative. No raw data tables. No metric rows.
+
+Output EXACTLY this structure. Use these EXACT section headers (one per line, uppercase, no punctuation):
+
+STORY
+• [Full sentence about the overall situation — reference the most relevant timeframe, not just 1D noise]
+• [Context: broader trend, or what makes this move meaningful vs noise]
+
+DRIVERS
+• [What's behind the move — cite a specific headline/event if one clearly supports the direction; otherwise "No clear direct catalyst — [possible reason]"]
+• [Second driver: sector/macro/flow/regulation context]
+
+TECHNICAL
+• [Interpreted position vs trend lines — e.g. "XRP is holding near short-term support but remains below its longer-term average"]
+• [One structural point: pattern or what would change the picture; max 2 numbers if essential]
+
+WATCH
+• [Upcoming event, earnings, regulation, or macro theme — never a raw price level like "watch $X"]
+• [Another theme or news catalyst to follow]
+
+SOURCES
+• [Exact headline title from the data]: [full URL from the data]
+• [Exact headline title from the data]: [full URL from the data]
+
+Hard rules:
+- STORY bullets must be full sentences — never raw metric lines like "7D: -4.49% | From 30D high..."
+- DRIVERS must be grounded in actual news/events or honest "No clear direct catalyst — [reason]"
+- TECHNICAL: always phrase in context ("above its 50-day average" not "50D MA: $X"); max 2 numbers
+- WATCH must be events/themes, never "watch $X level" or "key level at $X"
+- SOURCES: include 2-3 of the most relevant headlines with their exact URLs from news_by_window. Use only real URLs from the data — do NOT invent URLs. If no URL is available, omit SOURCES.
+- Do NOT include move percentages inside STORY or DRIVERS bullets
+- Target 120-160 words across STORY + DRIVERS + TECHNICAL + WATCH (excluding SOURCES)
+- No confidence tags. No markdown bold. No extra sections.\
+"""
+
+
+def build_telegram_why_prompt(facts: dict) -> str:
+    symbol = facts.get("symbol", "")
+    moves = facts.get("moves", {})
+    m1d = moves.get("1d", 0) or 0
+    m7d = moves.get("7d", 0) or 0
+    m30d = moves.get("30d", 0) or 0
+    trend = facts.get("recent_trend", "")
+
+    warnings: list[str] = []
+    if m1d < -1 and m7d > 3:
+        warnings.append(
+            f"{symbol} is down {abs(m1d):.1f}% today but up {m7d:.1f}% over 7D — "
+            "do NOT use 7D bullish news to explain today's drop."
+        )
+    elif m1d > 1 and m7d < -3:
+        warnings.append(
+            f"{symbol} is up {m1d:.1f}% today but down {abs(m7d):.1f}% over 7D — "
+            "do NOT use 7D bearish news to explain today's gain."
+        )
+    if m7d < -2 and m30d > 8:
+        warnings.append(
+            f"7D trend is negative ({m7d:+.1f}%) despite strong 30D gain ({m30d:+.1f}%) — "
+            "note this divergence in STORY."
+        )
+
+    warning_block = ""
+    if warnings:
+        warning_block = "\n\nDIRECTION WARNINGS:\n" + "\n".join(f"- {w}" for w in warnings)
+
+    return (
+        f"Write the Telegram /why for {symbol}. "
+        f"Trend: {trend}. "
+        f"1D {m1d:+.2f}% | 7D {m7d:+.2f}% | 30D {m30d:+.2f}%. "
+        "Use news_by_window buckets strictly: recent_1d/3d for DRIVERS, recent_7d/30d for STORY context. "
+        "Write human narrative sentences — no metric tables."
+        f"{warning_block}\n\n"
+        + json.dumps(facts, indent=2, default=str)
+    )

@@ -99,9 +99,24 @@ def _clean_markdown_text(line: str) -> str:
     return cleaned
 
 
+_RAW_METRICS_RE = re.compile(r"^(1D|3D|7D|30D):\s*[+\-]?\d")
+
+
 def _pick_section(line: str) -> str | None:
-    l = line.lower()
-    if "big picture" in l or "recent trend" in l or l == "story":
+    l = line.lower().strip()
+    # Telegram-WHY simple section headers (exact match)
+    if l == "story":
+        return "story"
+    if l == "drivers":
+        return "drivers"
+    if l == "technical":
+        return "technical"
+    if l == "watch":
+        return "watch"
+    if l == "sources":
+        return "sources"
+    # Legacy CLI-WHY section headers
+    if "big picture" in l or "recent trend" in l:
         return "story"
     if "latest move" in l or "recent drivers" in l:
         return "drivers"
@@ -133,16 +148,22 @@ def _safe_bullets(items: list[str], limit: int) -> list[str]:
             continue
         if cleaned.lower().startswith("why ") and "price:" in cleaned.lower():
             continue
+        if _RAW_METRICS_RE.match(cleaned):  # skip raw metric rows like "7D: -4.49% | From..."
+            continue
         out.append(cleaned)
         if len(out) >= limit:
             break
     return out
 
 
-def format_why_for_telegram(result: dict[str, str]) -> str:
+def format_why_for_telegram(result: dict) -> str:
     header = result.get("header", "")
     trend_line = result.get("trend_line", "")
-    explanation = result.get("explanation", "")
+    # Prefer the Telegram-specific narrative explanation when available
+    tg_explanation = result.get("telegram_explanation", "")
+    cli_explanation = result.get("explanation", "")
+    explanation = tg_explanation or cli_explanation
+    is_tg = bool(tg_explanation)
 
     symbol = "?"
     price = "N/A"
@@ -188,26 +209,16 @@ def format_why_for_telegram(result: dict[str, str]) -> str:
         if current_section in sections:
             sections[current_section].append(line)
 
-    if trend_line:
+    # Only prepend trend_line when falling back to CLI explanation (Telegram output has its own story)
+    if not is_tg and trend_line:
         trend_clean = _clean_markdown_text(trend_line).replace("Trend:", "").strip(" -")
         if trend_clean:
             sections["story"].insert(0, trend_clean)
 
     story = _safe_bullets(sections["story"], limit=2)
     drivers = _safe_bullets(sections["drivers"], limit=2)
-    technical = _safe_bullets(sections["technical"], limit=3)
+    technical = _safe_bullets(sections["technical"], limit=2)
     watch = _safe_bullets(sections["watch"], limit=2)
-
-    # Fall back to key technical fields if the model output omitted that section.
-    if not technical:
-        for label in ("Current price:", "50D MA:", "200D MA:"):
-            for raw in explanation.splitlines():
-                cleaned = _clean_markdown_text(raw)
-                if cleaned.lower().startswith(label.lower()):
-                    technical.append(cleaned)
-                    break
-            if len(technical) >= 3:
-                break
 
     lines_out = [
         f"🧠 <b>WHY {html.escape(symbol)}?</b>",

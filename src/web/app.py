@@ -8,7 +8,7 @@ from src.cli.commands import (
     generate_brief_text,
     generate_levels_text,
     generate_tech_text,
-    generate_why_text,
+    generate_telegram_why_text,
 )
 from src.config.settings import settings
 from src.delivery.telegram import send_telegram_message
@@ -57,7 +57,7 @@ def _process_command(chat_id: str, parsed: ParsedCommand) -> None:
             raise ValueError("Use: /why BTC")
         symbol = parsed.symbol
         send_telegram_message(f"Checking {symbol}...", chat_id=chat_id)
-        result = generate_why_text(symbol)
+        result = generate_telegram_why_text(symbol)
         send_telegram_message(format_why_for_telegram(result), parse_mode="HTML", chat_id=chat_id)
         return
 

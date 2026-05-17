@@ -18,7 +18,10 @@ from src.analysis.movers import (
 )
 from src.analysis.facts import build_asset_facts, build_why_facts
 from src.ai.client import complete
-from src.ai.prompts import SYSTEM_BRIEF, SYSTEM_WHY, build_brief_prompt, build_why_prompt
+from src.ai.prompts import (
+    SYSTEM_BRIEF, SYSTEM_WHY, SYSTEM_TELEGRAM_WHY,
+    build_brief_prompt, build_why_prompt, build_telegram_why_prompt,
+)
 from src.delivery.telegram import send_telegram_message
 from src.utils.telegram_formatting import format_brief_for_telegram
 from src.utils.formatting import (
@@ -445,7 +448,19 @@ def generate_why_text(symbol: str) -> dict:
         "trend_line": trend_line,
         "header": f"WHY {symbol}?   {header_pcts}",
         "explanation": explanation,
+        "facts": facts,
     }
+
+
+def generate_telegram_why_text(symbol: str) -> dict:
+    """Like generate_why_text but includes a shorter, narrative Telegram explanation."""
+    result = generate_why_text(symbol)
+    facts = result.get("facts")
+    if not facts:
+        return result
+    tg_prompt = build_telegram_why_prompt(facts)
+    tg_explanation = complete(tg_prompt, SYSTEM_TELEGRAM_WHY)
+    return {**result, "telegram_explanation": tg_explanation}
 
 
 def cmd_why(symbol: str) -> None:
