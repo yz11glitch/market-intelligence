@@ -1,0 +1,20 @@
+stocks:
+  - NVDA
+  - AMD
+  - TSLA
+  - AAPL
+  - MSFT
+  - META
+  - AMZN
+  - GOOGL
+
+etfs:
+  - SPY
+  - QQQ
+  - DIA
+  - IWM
+
+crypto:
+  - BTC
+  - ETH
+  - SOL
