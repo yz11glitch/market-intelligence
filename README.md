@@ -41,6 +41,7 @@ Webhook backend supports slash commands in allowed chats:
 - `/why BTC`
 - `/levels ETH`
 - `/tech BTC`
+- `/help`
 
 Non-command group messages are ignored.
 
@@ -76,3 +77,4 @@ You can run the app locally with uvicorn and send sample updates to `/telegram/w
 - `/why TICKER` = mixed narrative with sources
 - `/levels TICKER` = raw levels/moving-average numbers
 - `/tech TICKER` = interpreted technical read from existing technical data
+- `/help` = quick command reference
