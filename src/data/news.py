@@ -71,6 +71,87 @@ def get_crypto_news(symbol: str, days_back: int = 3, limit: int = 5) -> list[dic
         return []
 
 
+def get_stock_news_multi_window(symbol: str) -> dict:
+    """
+    Fetch up to 30 days of stock news in one API call and bucket by recency.
+    Returns: {recent_1d, recent_3d, recent_7d, recent_30d}
+    Buckets are mutually exclusive; use matching bucket per timeframe section.
+    """
+    client = _finnhub_client()
+    empty = {"recent_1d": [], "recent_3d": [], "recent_7d": [], "recent_30d": []}
+    if not client:
+        return empty
+    now = datetime.now()
+    try:
+        articles = client.company_news(
+            symbol,
+            _from=(now - timedelta(days=30)).strftime("%Y-%m-%d"),
+            to=now.strftime("%Y-%m-%d"),
+        )
+    except Exception as e:
+        print(f"  [news] Multi-window news error for {symbol}: {e}")
+        return empty
+
+    cutoff_1d = (now - timedelta(days=2)).timestamp()
+    cutoff_3d = (now - timedelta(days=4)).timestamp()
+    cutoff_7d = (now - timedelta(days=10)).timestamp()
+    buckets: dict[str, list] = {"recent_1d": [], "recent_3d": [], "recent_7d": [], "recent_30d": []}
+
+    for article in articles[:50]:
+        ts = article.get("datetime", 0)
+        fmt = _format_article(article)
+        if ts >= cutoff_1d:
+            buckets["recent_1d"].append(fmt)
+        elif ts >= cutoff_3d:
+            buckets["recent_3d"].append(fmt)
+        elif ts >= cutoff_7d:
+            buckets["recent_7d"].append(fmt)
+        else:
+            buckets["recent_30d"].append(fmt)
+
+    return {k: v[:8] for k, v in buckets.items()}
+
+
+def get_crypto_news_multi_window(symbol: str) -> dict:
+    """
+    Fetch crypto news from Finnhub general feed and bucket into time windows.
+    general_news typically covers only the last few days, so recent_30d is usually empty.
+    """
+    client = _finnhub_client()
+    empty = {"recent_1d": [], "recent_3d": [], "recent_7d": [], "recent_30d": []}
+    if not client:
+        return empty
+    try:
+        articles = client.general_news("crypto", min_id=0)
+    except Exception as e:
+        print(f"  [news] Crypto multi-window news error for {symbol}: {e}")
+        return empty
+
+    search_terms = get_crypto_info(symbol)["terms"]
+    now = datetime.now()
+    cutoff_1d = (now - timedelta(days=2)).timestamp()
+    cutoff_3d = (now - timedelta(days=4)).timestamp()
+    cutoff_7d = (now - timedelta(days=10)).timestamp()
+    buckets: dict[str, list] = {"recent_1d": [], "recent_3d": [], "recent_7d": [], "recent_30d": []}
+
+    for article in articles:
+        ts = article.get("datetime", 0)
+        if ts < cutoff_7d:
+            continue
+        text = (article.get("headline", "") + " " + article.get("summary", "")).lower()
+        if not any(term in text for term in search_terms):
+            continue
+        fmt = _format_article(article)
+        if ts >= cutoff_1d:
+            buckets["recent_1d"].append(fmt)
+        elif ts >= cutoff_3d:
+            buckets["recent_3d"].append(fmt)
+        else:
+            buckets["recent_7d"].append(fmt)
+
+    return {k: v[:8] for k, v in buckets.items()}
+
+
 def get_upcoming_earnings(watchlist_symbols: list[str], days_ahead: int = 7) -> list[dict]:
     """Fetch earnings calendar from Finnhub, filtered to watchlist symbols."""
     client = _finnhub_client()

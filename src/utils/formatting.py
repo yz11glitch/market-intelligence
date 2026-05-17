@@ -72,10 +72,10 @@ def levels_table(symbol: str, summary: dict, technicals: dict) -> str:
 
     if high_20d:
         diff_h = ((current - high_20d) / high_20d) * 100
-        lines.append(f"  {'20d High':<22} {fmt_price(high_20d):>10}   {fmt_pct(diff_h)}{h_tag}")
+        lines.append(f"  {'Recent High (20D)':<22} {fmt_price(high_20d):>10}   {fmt_pct(diff_h)}{h_tag}")
     if low_20d:
         diff_l = ((current - low_20d) / low_20d) * 100
-        lines.append(f"  {'20d Low':<22} {fmt_price(low_20d):>10}   {fmt_pct(diff_l)}{l_tag}")
+        lines.append(f"  {'Recent Low (20D)':<22} {fmt_price(low_20d):>10}   {fmt_pct(diff_l)}{l_tag}")
 
     lines.append("")
 
@@ -87,10 +87,10 @@ def levels_table(symbol: str, summary: dict, technicals: dict) -> str:
 
     if ma50:
         tag = fmt_pct(vs_50) if vs_50 is not None else ""
-        lines.append(f"  {'50-day MA':<22} {fmt_price(ma50):>10}   {tag}")
+        lines.append(f"  {'50D MA':<22} {fmt_price(ma50):>10}   {tag}")
     if ma200:
         tag = fmt_pct(vs_200) if vs_200 is not None else ""
-        lines.append(f"  {'200-day MA':<22} {fmt_price(ma200):>10}   {tag}")
+        lines.append(f"  {'200D MA':<22} {fmt_price(ma200):>10}   {tag}")
 
     lines.append("")
 

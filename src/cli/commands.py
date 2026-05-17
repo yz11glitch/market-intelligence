@@ -5,17 +5,21 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from src.data.prices import fetch_ohlcv, get_price_summary
 from src.data.crypto import is_crypto, get_crypto_summary
-from src.data.news import get_stock_news, get_crypto_news, get_upcoming_earnings
+from src.data.news import (
+    get_stock_news, get_crypto_news, get_upcoming_earnings,
+    get_stock_news_multi_window, get_crypto_news_multi_window,
+)
 from src.analysis.technicals import calculate_technicals, calculate_multi_window_moves
 from src.analysis.movers import (
     is_meaningful_mover, rank_movers,
-    classify_asset, select_explanation_window, WINDOW_NEWS_DAYS,
+    classify_asset, select_explanation_window, build_trend_summary_line,
+    classify_move, get_pullback_from_high_context,
 )
-from src.analysis.facts import build_asset_facts
+from src.analysis.facts import build_asset_facts, build_why_facts
 from src.ai.client import complete
 from src.ai.prompts import SYSTEM_BRIEF, SYSTEM_WHY, build_brief_prompt, build_why_prompt
 from src.utils.formatting import (
-    fmt_pct, print_header, print_section, separator, levels_table
+    fmt_pct, fmt_price, print_header, print_section, separator, levels_table
 )
 
 ROOT = pathlib.Path(__file__).parent.parent.parent
@@ -35,6 +39,7 @@ def _fetch_stock(symbol: str, asset_type: str = "stock") -> tuple[str, dict | No
     if df is None or summary is None:
         return symbol, None
     summary["technicals"] = calculate_technicals(df)
+    summary["multi_window"] = calculate_multi_window_moves(df)
     summary["asset_type"] = asset_type
     return symbol, summary
 
@@ -45,8 +50,52 @@ def _fetch_crypto(symbol: str) -> tuple[str, dict | None]:
     if df is None or summary is None:
         return symbol, None
     summary["technicals"] = calculate_technicals(df)
+    summary["multi_window"] = calculate_multi_window_moves(df)
     summary["asset_type"] = "crypto"
     return symbol, summary
+
+
+# ── Context helpers for /why ─────────────────────────────────────────────────
+
+def _stock_market_context() -> dict:
+    """Fetch SPY and QQQ with 1D/7D/30D moves as benchmark context for stock /why queries."""
+    ctx: dict = {}
+    for sym in ("SPY", "QQQ"):
+        df = fetch_ohlcv(sym, is_crypto=False, days=40)
+        s = get_price_summary(sym, is_crypto=False)
+        if s:
+            ctx[f"{sym}_1d_pct"] = s.get("change_pct")
+        if df is not None:
+            mw = calculate_multi_window_moves(df)
+            moves = mw.get("moves", {})
+            if moves.get("7d") is not None:
+                ctx[f"{sym}_7d_pct"] = moves["7d"]
+            if moves.get("30d") is not None:
+                ctx[f"{sym}_30d_pct"] = moves["30d"]
+    return ctx
+
+
+def _crypto_market_context(symbol: str) -> dict:
+    """Fetch BTC (and ETH for non-ETH) with 1D/7D/30D moves as benchmark context."""
+    ctx: dict = {}
+    benchmarks = []
+    if symbol != "BTC":
+        benchmarks.append("BTC")
+    if symbol not in ("BTC", "ETH"):
+        benchmarks.append("ETH")
+    for bench in benchmarks:
+        df = fetch_ohlcv(bench, is_crypto=True, days=40)
+        s = get_price_summary(bench, is_crypto=True)
+        if s:
+            ctx[f"{bench}_1d_pct"] = s.get("change_pct")
+        if df is not None:
+            mw = calculate_multi_window_moves(df)
+            moves = mw.get("moves", {})
+            if moves.get("7d") is not None:
+                ctx[f"{bench}_7d_pct"] = moves["7d"]
+            if moves.get("30d") is not None:
+                ctx[f"{bench}_30d_pct"] = moves["30d"]
+    return ctx
 
 
 # ── Commands ─────────────────────────────────────────────────────────────────
@@ -84,10 +133,13 @@ def cmd_brief() -> None:
     for sym in etfs:
         if sym in results:
             d = results[sym]
+            mw = d.get("multi_window", {})
             index_facts.append({
                 "symbol": sym,
                 "price": d["price"],
                 "change_pct": d["change_pct"],
+                "moves": mw.get("moves", {}),
+                "recent_context": mw.get("recent_context", {}),
             })
 
     # Stock movers
@@ -97,13 +149,29 @@ def cmd_brief() -> None:
             continue
         d = results[sym]
         tech = d["technicals"]
+        mw = d.get("multi_window", {})
+        moves = mw.get("moves", {})
+        recent_context = mw.get("recent_context", {})
+        asset_class = classify_asset(sym, "stock")
         vol_ratio = tech.get("volume_ratio_20d")
-        if is_meaningful_mover(d["change_pct"], vol_ratio, is_crypto=False):
-            news = get_stock_news(sym)
+        meaningful_context = any(
+            classify_move(moves.get(w), asset_class, w) != "noise"
+            for w in ("3d", "7d", "30d")
+        ) or get_pullback_from_high_context(recent_context).get("primary_pullback", {}).get("label") != "none"
+        if is_meaningful_mover(d["change_pct"], vol_ratio, is_crypto=False) or meaningful_context:
+            news = get_stock_news(sym, limit=3)
             stock_movers.append(
-                build_asset_facts(sym, "stock", d, tech, news)
+                build_asset_facts(
+                    sym,
+                    "stock",
+                    d,
+                    tech,
+                    news,
+                    multi_window=mw,
+                    asset_class=asset_class,
+                )
             )
-    stock_movers = rank_movers(stock_movers)[:6]
+    stock_movers = rank_movers(stock_movers)[:4]
 
     # Crypto (always include all watchlist crypto)
     crypto_facts = []
@@ -112,11 +180,15 @@ def cmd_brief() -> None:
             continue
         d = results[sym]
         tech = d["technicals"]
-        news = get_crypto_news(sym)
+        mw = d.get("multi_window", {})
+        asset_class = classify_asset(sym, "crypto")
+        news = get_crypto_news(sym, limit=2)
         crypto_facts.append(
             build_asset_facts(
                 sym, "crypto", d, tech, news,
                 change_7d_pct=d.get("change_7d_pct"),
+                multi_window=mw,
+                asset_class=asset_class,
             )
         )
 
@@ -152,39 +224,47 @@ def cmd_why(symbol: str) -> None:
     technicals = calculate_technicals(df)
     multi_window = calculate_multi_window_moves(df)
 
-    # Determine which window is the meaningful signal
     asset_class = classify_asset(symbol, asset_type)
     window, window_reason = select_explanation_window(
         multi_window.get("moves", {}), asset_class
     )
-    news_days = WINDOW_NEWS_DAYS.get(window, 2)
+    trend_line = build_trend_summary_line(
+        symbol,
+        multi_window.get("moves", {}),
+        multi_window.get("recent_context", {}),
+        asset_class,
+    )
+    print(f"  {trend_line}")
 
-    print(f"  Window: {window} ({window_reason[:60]}...)" if len(window_reason) > 60
-          else f"  Window: {window} — {window_reason}")
-
-    # Fetch news aligned to the selected window
+    # Multi-window news (one API call, three buckets)
     if crypto_asset:
-        news = get_crypto_news(symbol, days_back=news_days)
+        news_by_window = get_crypto_news_multi_window(symbol)
+        market_context = _crypto_market_context(symbol)
     else:
-        news = get_stock_news(symbol, days_back=news_days)
+        news_by_window = get_stock_news_multi_window(symbol)
+        market_context = _stock_market_context()
 
-    facts = build_asset_facts(
-        symbol, asset_type, summary, technicals, news,
-        change_7d_pct=summary.get("change_7d_pct"),
-        multi_window=multi_window,
-        explanation_window=window,
-        window_reason=window_reason,
-        asset_class=asset_class,
+    # Upcoming events (stocks only; 14-day lookahead)
+    upcoming_events: list[dict] = []
+    if not crypto_asset:
+        upcoming_events = get_upcoming_earnings([symbol], days_ahead=14)
+
+    facts = build_why_facts(
+        symbol, asset_type, asset_class, summary,
+        technicals, multi_window, window, window_reason,
+        news_by_window, market_context, upcoming_events,
     )
 
     prompt = build_why_prompt(facts)
     explanation = complete(prompt, SYSTEM_WHY)
 
-    change_1d = summary.get("change_pct", 0)
     moves = multi_window.get("moves", {})
-    header_pcts = f"1D {fmt_pct(change_1d)}"
+    change_1d = summary.get("change_pct", 0)
+    header_pcts = f"Price: {fmt_price(summary.get('price'))}  1D {fmt_pct(change_1d)}"
     if moves.get("7d") is not None:
         header_pcts += f"  7D {fmt_pct(moves['7d'])}"
+    if moves.get("30d") is not None:
+        header_pcts += f"  30D {fmt_pct(moves['30d'])}"
     print_header(f"WHY {symbol}?   {header_pcts}")
     print(explanation)
     print(separator("═"))
@@ -210,6 +290,6 @@ def cmd_levels(symbol: str) -> None:
 
     technicals = calculate_technicals(df)
 
-    print_header(f"LEVELS — {symbol}")
+    print_header(f"LEVELS — {symbol}   Price: {fmt_price(summary.get('price'))}")
     print(levels_table(symbol, summary, technicals))
     print(separator("═"))
