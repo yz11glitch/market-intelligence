@@ -1,6 +1,6 @@
 import sys
 import argparse
-from src.cli.commands import cmd_brief, cmd_why, cmd_levels, cmd_tech
+from src.cli.commands import cmd_brief, cmd_why, cmd_levels, cmd_tech, cmd_usage
 
 
 def main() -> None:
@@ -25,6 +25,13 @@ def main() -> None:
     p_tech = sub.add_parser("tech", help="Technical analysis summary (no news)")
     p_tech.add_argument("symbol", type=str, help="Ticker symbol, e.g. BTC or NVDA")
 
+    p_usage = sub.add_parser("usage", help="Show LLM usage and estimated cost")
+    p_usage.add_argument(
+        "--send-telegram",
+        action="store_true",
+        help="Send the usage report to Telegram",
+    )
+
     args = parser.parse_args()
 
     if args.command == "brief":
@@ -35,6 +42,8 @@ def main() -> None:
         cmd_levels(args.symbol.upper())
     elif args.command == "tech":
         cmd_tech(args.symbol.upper())
+    elif args.command == "usage":
+        cmd_usage(send_telegram=args.send_telegram)
     else:
         parser.print_help()
         sys.exit(0)

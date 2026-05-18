@@ -1,7 +1,9 @@
 import threading
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from src.bot.commands import ParsedCommand, parse_command
 from src.cli.commands import (
@@ -123,6 +125,26 @@ def _handle_update(update: dict[str, Any]) -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/usage/daily-report")
+async def usage_daily_report(request: Request) -> JSONResponse:
+    token = request.query_params.get("token", "")
+    expected = settings.USAGE_REPORT_TOKEN
+    if not expected or token != expected:
+        return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
+
+    from src.ai.usage import load_records, build_usage_report, _sum_records
+
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    records = load_records()
+    day_recs = [r for r in records if r.get("timestamp", "").startswith(yesterday)]
+    _, _, cost = _sum_records(day_recs)
+
+    report = build_usage_report(yesterday)
+    send_telegram_message(report, parse_mode="HTML")
+
+    return JSONResponse({"ok": True, "date": yesterday, "estimated_cost_usd": round(cost, 6)})
 
 
 @app.post("/telegram/webhook")

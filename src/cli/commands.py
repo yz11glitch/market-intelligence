@@ -613,7 +613,7 @@ def generate_brief_text() -> tuple[str, str]:
 
     print("Generating brief...\n")
     prompt = build_brief_prompt(watchlist_facts, market_news, crypto_news, events)
-    brief = complete(prompt, SYSTEM_BRIEF, max_tokens=1000)
+    brief = complete(prompt, SYSTEM_BRIEF, max_tokens=1000, context="brief")
     brief = _de_technicalize_brief(brief, high_impact=high_impact, medium_impact=medium_impact)
     brief = _fill_missing_watchlist(brief, watchlist_facts)
     brief_date = datetime.now().strftime("%Y-%m-%d")
@@ -685,7 +685,7 @@ def generate_why_text(symbol: str) -> dict:
     )
 
     prompt = build_why_prompt(facts)
-    explanation = complete(prompt, SYSTEM_WHY)
+    explanation = complete(prompt, SYSTEM_WHY, context="why")
 
     moves = multi_window.get("moves", {})
     change_1d = summary.get("change_pct", 0)
@@ -709,7 +709,7 @@ def generate_telegram_why_text(symbol: str) -> dict:
     if not facts:
         return result
     tg_prompt = build_telegram_why_prompt(facts)
-    tg_explanation = complete(tg_prompt, SYSTEM_TELEGRAM_WHY)
+    tg_explanation = complete(tg_prompt, SYSTEM_TELEGRAM_WHY, context="telegram_why")
     return {**result, "telegram_explanation": tg_explanation}
 
 
@@ -854,3 +854,58 @@ def cmd_tech(symbol: str) -> None:
     print_header(result["header"])
     print(result["text"])
     print(separator("═"))
+
+
+def cmd_usage(send_telegram: bool = False) -> None:
+    from src.ai.usage import load_records, build_usage_report, _sum_records
+    from datetime import timezone
+
+    records = load_records()
+    if not records:
+        print("\nNo usage data found. Run a command first.\n")
+        return
+
+    now = datetime.now(timezone.utc)
+    today_str = now.strftime("%Y-%m-%d")
+    month_str = now.strftime("%Y-%m")
+
+    today = [r for r in records if r.get("timestamp", "").startswith(today_str)]
+    month = [r for r in records if r.get("timestamp", "").startswith(month_str)]
+
+    td_calls, td_tokens, td_cost = _sum_records(today)
+    mo_calls, mo_tokens, mo_cost = _sum_records(month)
+
+    ctx_cost: dict[str, float] = {}
+    for r in records:
+        ctx = r.get("context") or "unknown"
+        ctx_cost[ctx] = ctx_cost.get(ctx, 0.0) + (r.get("estimated_cost_usd") or 0.0)
+
+    model_cost: dict[str, float] = {}
+    for r in records:
+        m = r.get("model") or "unknown"
+        model_cost[m] = model_cost.get(m, 0.0) + (r.get("estimated_cost_usd") or 0.0)
+
+    print_header("LLM USAGE")
+    print(f"Today ({today_str}):")
+    print(f"  Calls:          {td_calls}")
+    print(f"  Tokens:         {td_tokens:,}")
+    print(f"  Estimated cost: ${td_cost:.4f}")
+    print()
+    print(f"This month ({month_str}):")
+    print(f"  Calls:          {mo_calls}")
+    print(f"  Tokens:         {mo_tokens:,}")
+    print(f"  Estimated cost: ${mo_cost:.4f}")
+    print()
+    print("By command (all time):")
+    for ctx, cost in sorted(ctx_cost.items(), key=lambda x: -x[1]):
+        print(f"  {ctx:<20} ${cost:.4f}")
+    print()
+    print("By model (all time):")
+    for model, cost in sorted(model_cost.items(), key=lambda x: -x[1]):
+        print(f"  {model:<30} ${cost:.4f}")
+    print(separator("═"))
+
+    if send_telegram:
+        report = build_usage_report(today_str)
+        send_telegram_message(report, parse_mode="HTML")
+        print("Usage report sent to Telegram.")

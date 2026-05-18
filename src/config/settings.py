@@ -10,11 +10,14 @@ class Settings:
     LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "500"))
     LLM_MAX_TOKENS_DEEP: int = int(os.getenv("LLM_MAX_TOKENS_DEEP", "1200"))
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
+    LLM_INPUT_COST_PER_1M: float = float(os.getenv("LLM_INPUT_COST_PER_1M", "0.40"))
+    LLM_OUTPUT_COST_PER_1M: float = float(os.getenv("LLM_OUTPUT_COST_PER_1M", "1.60"))
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
     ALLOWED_CHAT_IDS: str = os.getenv("ALLOWED_CHAT_IDS", "")
+    USAGE_REPORT_TOKEN: str = os.getenv("USAGE_REPORT_TOKEN", "")
 
 
 settings = Settings()

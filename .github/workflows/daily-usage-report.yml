@@ -1,0 +1,42 @@
+name: Daily Usage Report
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 16:00 UTC = 00:00 Singapore/Malaysia time (UTC+8)
+    - cron: "0 16 * * *"
+
+jobs:
+  send-usage-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required secrets
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+          USAGE_REPORT_TOKEN: ${{ secrets.USAGE_REPORT_TOKEN }}
+        run: |
+          missing=0
+          if [ -z "${RENDER_APP_URL}" ]; then
+            echo "::error::Missing secret: RENDER_APP_URL"
+            missing=1
+          fi
+          if [ -z "${USAGE_REPORT_TOKEN}" ]; then
+            echo "::error::Missing secret: USAGE_REPORT_TOKEN"
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Send daily usage report
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+          USAGE_REPORT_TOKEN: ${{ secrets.USAGE_REPORT_TOKEN }}
+        run: |
+          response=$(curl -sf "${RENDER_APP_URL}/usage/daily-report?token=${USAGE_REPORT_TOKEN}")
+          echo "Response: $response"
+          ok=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ok','false'))")
+          if [ "$ok" != "True" ]; then
+            echo "::error::Usage report endpoint returned not-ok: $response"
+            exit 1
+          fi
