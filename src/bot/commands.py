@@ -9,6 +9,7 @@ SUPPORTED_COMMANDS = {
     "tech",
     "help",
     "adminhelp",
+    "alerts",
     "watchlist",
     "settings",
     "set_branding",
@@ -40,6 +41,7 @@ _USAGE_BY_COMMAND = {
     "start": "Use: /start",
     "help": "Use: /help",
     "adminhelp": "Use: /adminhelp",
+    "alerts": "Use: /alerts",
 }
 
 
@@ -114,7 +116,7 @@ def parse_command(text: str) -> ParsedCommand | None:
             return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["settings"])
         return ParsedCommand(command=command)
 
-    if command in {"start", "help", "adminhelp"}:
+    if command in {"start", "help", "adminhelp", "alerts"}:
         if raw_args:
             return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND[command])
         return ParsedCommand(command=command)

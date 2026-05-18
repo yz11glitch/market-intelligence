@@ -1,3 +1,4 @@
+import html
 import threading
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -5,7 +6,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from src.alerts.scanner import scan_alert_events
+from src.alerts.scanner import get_saved_alert_events, scan_alert_events
 from src.bot.commands import ParsedCommand, parse_command
 from src.cli.commands import (
     generate_brief_text,
@@ -72,6 +73,7 @@ def _help_text() -> str:
         "• /why SYMBOL\n"
         "• /tech SYMBOL\n"
         "• /levels SYMBOL\n"
+        "• /alerts\n"
         "• /watchlist show\n"
         "• /settings\n\n"
         "Need setup commands? Use /adminhelp."
@@ -93,6 +95,47 @@ def _admin_help_text() -> str:
         "• /set_pin_brief on/off\n\n"
         "In groups, only admins can change watchlists/settings."
     )
+
+
+def _format_alerts_for_telegram(events: list[dict]) -> str:
+    if not events:
+        return "No saved market alerts found."
+
+    lines: list[str] = []
+    sections = [("high", "🔴 <b>HIGH IMPACT</b>"), ("medium", "🟠 <b>MEDIUM IMPACT</b>")]
+    for level, title in sections:
+        grouped = [e for e in events if str(e.get("impact_level", "")).lower() == level]
+        if not grouped:
+            continue
+        if lines:
+            lines.append("")
+        lines.append(title)
+        for item in grouped:
+            score = int(item.get("impact_score") or 0)
+            headline = str(item.get("headline") or "").strip() or "(no headline)"
+            source = str(item.get("source") or "").strip() or "Unknown"
+            symbols = str(item.get("symbols") or "").strip()
+            first_seen = str(item.get("first_seen_at") or "").strip()
+            category = str(item.get("category") or "").strip()
+            url = str(item.get("url") or "").strip()
+
+            if url:
+                lines.append(
+                    f'• <a href="{html.escape(url, quote=True)}">{html.escape(headline)}</a>'
+                )
+            else:
+                lines.append(f"• {html.escape(headline)}")
+
+            meta_parts = [f"score {score}", source]
+            if category:
+                meta_parts.append(category)
+            if symbols:
+                meta_parts.append(f"symbols: {symbols}")
+            if first_seen:
+                meta_parts.append(f"seen: {first_seen}")
+            lines.append(f"  <i>{html.escape(' | '.join(meta_parts))}</i>")
+
+    return "\n".join(lines) if lines else "No saved market alerts found."
 
 
 def _format_watchlist_text(chat_id: str) -> str:
@@ -237,6 +280,21 @@ def _process_command(
 
     if parsed.command == "adminhelp":
         send_telegram_message(_admin_help_text(), parse_mode="HTML", chat_id=chat_id)
+        return
+
+    if parsed.command == "alerts":
+        payload = get_saved_alert_events(hours=24, limit=10)
+        if not payload.get("ok"):
+            send_telegram_message(
+                payload.get("error") or "Could not read saved alerts right now.",
+                chat_id=chat_id,
+            )
+            return
+        send_telegram_message(
+            _format_alerts_for_telegram(list(payload.get("events", []))),
+            parse_mode="HTML",
+            chat_id=chat_id,
+        )
         return
 
     if parsed.command == "settings":

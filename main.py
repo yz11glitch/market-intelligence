@@ -1,6 +1,6 @@
 import sys
 import argparse
-from src.cli.commands import cmd_brief, cmd_why, cmd_levels, cmd_tech, cmd_usage
+from src.cli.commands import cmd_alerts, cmd_brief, cmd_why, cmd_levels, cmd_tech, cmd_usage
 
 
 def main() -> None:
@@ -31,6 +31,7 @@ def main() -> None:
         action="store_true",
         help="Send the usage report to Telegram",
     )
+    sub.add_parser("alerts", help="Show saved high/medium alert events (last 24h)")
 
     args = parser.parse_args()
 
@@ -44,6 +45,8 @@ def main() -> None:
         cmd_tech(args.symbol.upper())
     elif args.command == "usage":
         cmd_usage(send_telegram=args.send_telegram)
+    elif args.command == "alerts":
+        cmd_alerts()
     else:
         parser.print_help()
         sys.exit(0)

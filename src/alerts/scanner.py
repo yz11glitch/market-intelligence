@@ -161,3 +161,65 @@ def scan_alert_events() -> dict:
         return {**result, "ok": False, "error": str(exc)}
     finally:
         conn.close()
+
+
+def get_saved_alert_events(hours: int = 24, limit: int = 10) -> dict:
+    if not is_database_configured():
+        return {
+            "ok": False,
+            "events": [],
+            "error": "Alerts storage is not configured because DATABASE_URL is missing.",
+        }
+
+    bounded_hours = max(1, int(hours))
+    bounded_limit = max(1, int(limit))
+    since = datetime.now(timezone.utc) - timedelta(hours=bounded_hours)
+
+    try:
+        conn = get_connection()
+    except Exception:
+        return {"ok": False, "events": [], "error": "Could not read saved alerts right now."}
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT headline, source, url, symbols, category, impact_score, impact_level, first_seen_at
+                FROM news_events
+                WHERE expires_at > CURRENT_TIMESTAMP
+                  AND first_seen_at >= %s
+                  AND impact_level IN ('high', 'medium')
+                ORDER BY
+                  CASE WHEN impact_level = 'high' THEN 0 ELSE 1 END ASC,
+                  impact_score DESC,
+                  first_seen_at DESC
+                LIMIT %s;
+                """,
+                (since, bounded_limit),
+            )
+            rows = cur.fetchall()
+
+        events: list[dict] = []
+        for row in rows:
+            first_seen = row[7]
+            if isinstance(first_seen, datetime):
+                first_seen_text = first_seen.strftime("%Y-%m-%d %H:%M UTC")
+            else:
+                first_seen_text = str(first_seen)
+            events.append(
+                {
+                    "headline": str(row[0] or ""),
+                    "source": str(row[1] or ""),
+                    "url": str(row[2] or ""),
+                    "symbols": str(row[3] or ""),
+                    "category": str(row[4] or ""),
+                    "impact_score": int(row[5] or 0),
+                    "impact_level": str(row[6] or "").lower(),
+                    "first_seen_at": first_seen_text,
+                }
+            )
+        return {"ok": True, "events": events, "error": ""}
+    except Exception:
+        return {"ok": False, "events": [], "error": "Could not read saved alerts right now."}
+    finally:
+        conn.close()

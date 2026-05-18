@@ -36,6 +36,20 @@ class ParseCommandTests(unittest.TestCase):
             return
         self.assertEqual(parsed.command, "help")
 
+    def test_alerts_with_bot_suffix(self) -> None:
+        parsed = parse_command("/alerts@MarketIntelBot")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "alerts")
+
+    def test_alerts_command(self) -> None:
+        parsed = parse_command("/alerts")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "alerts")
+
     def test_why_command_normalizes_symbol(self) -> None:
         parsed = parse_command("/why@MarketIntelBot btc")
         self.assertIsNotNone(parsed)

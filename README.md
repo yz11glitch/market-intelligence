@@ -46,6 +46,7 @@ Run it manually from **Actions → Daily Brief → Run workflow** to test.
 Webhook backend supports slash commands in allowed chats:
 - `/start`
 - `/brief`
+- `/alerts`
 - `/why BTC`
 - `/levels ETH`
 - `/tech BTC`
@@ -105,6 +106,7 @@ You can run the app locally with uvicorn and send sample updates to `/telegram/w
 
 - `/start` = quick onboarding + key commands for this chat
 - `/brief` = market story update (news, macro, catalysts, events)
+- `/alerts` = read-only saved high/medium alert events from the last 24 hours
 - `/why TICKER` = mixed narrative with sources
 - `/levels TICKER` = raw levels/moving-average numbers
 - `/tech TICKER` = interpreted technical read from existing technical data

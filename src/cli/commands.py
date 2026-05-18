@@ -22,6 +22,7 @@ from src.ai.prompts import (
     build_brief_prompt, build_why_prompt, build_telegram_why_prompt,
 )
 from src.delivery.telegram import maybe_pin_daily_brief, send_telegram_message
+from src.alerts.scanner import get_saved_alert_events
 from src.storage.watchlists import load_default_watchlist
 from src.utils.telegram_formatting import format_brief_for_telegram
 
@@ -924,3 +925,47 @@ def cmd_usage(send_telegram: bool = False) -> None:
         report = build_usage_report(today_str)
         send_telegram_message(report, parse_mode="HTML")
         print("Usage report sent to Telegram.")
+
+
+def cmd_alerts() -> None:
+    payload = get_saved_alert_events(hours=24, limit=10)
+    if not payload.get("ok"):
+        print(payload.get("error") or "Could not read saved alerts right now.")
+        return
+
+    events = list(payload.get("events", []))
+    if not events:
+        print("No saved market alerts found.")
+        return
+
+    print_header("SAVED MARKET ALERTS (LAST 24H)")
+    grouped = {"high": [], "medium": []}
+    for event in events:
+        level = str(event.get("impact_level", "")).lower()
+        if level in grouped:
+            grouped[level].append(event)
+
+    sections = [("high", "🔴 HIGH IMPACT"), ("medium", "🟠 MEDIUM IMPACT")]
+    for key, title in sections:
+        items = grouped[key]
+        if not items:
+            continue
+        print(title)
+        for item in items:
+            score = int(item.get("impact_score") or 0)
+            headline = str(item.get("headline") or "")
+            source = str(item.get("source") or "").strip() or "Unknown"
+            symbols = str(item.get("symbols") or "").strip()
+            first_seen = str(item.get("first_seen_at") or "")
+            category = str(item.get("category") or "").strip()
+            meta_parts = [f"score {score}", source]
+            if category:
+                meta_parts.append(category)
+            if symbols:
+                meta_parts.append(f"symbols: {symbols}")
+            if first_seen:
+                meta_parts.append(f"seen: {first_seen}")
+            print(f"- {headline}")
+            print(f"  ({' | '.join(meta_parts)})")
+        print()
+    print(separator("═"))
