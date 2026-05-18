@@ -1,6 +1,4 @@
-import pathlib
 import re
-import yaml
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -23,7 +21,8 @@ from src.ai.prompts import (
     SYSTEM_BRIEF, SYSTEM_WHY, SYSTEM_TELEGRAM_WHY,
     build_brief_prompt, build_why_prompt, build_telegram_why_prompt,
 )
-from src.delivery.telegram import send_telegram_message
+from src.delivery.telegram import maybe_pin_daily_brief, send_telegram_message
+from src.storage.watchlists import load_default_watchlist
 from src.utils.telegram_formatting import format_brief_for_telegram
 
 NEWS_RATE_LIMIT_NOTE = (
@@ -32,9 +31,6 @@ NEWS_RATE_LIMIT_NOTE = (
 from src.utils.formatting import (
     fmt_pct, fmt_price, print_header, print_section, separator, levels_table,
 )
-
-ROOT = pathlib.Path(__file__).parent.parent.parent
-WATCHLIST_PATH = ROOT / "config" / "watchlist.yaml"
 
 _MARKET_HIGH_RE = re.compile(
     r'\b(fed\b|federal reserve|interest rate|inflation|cpi|pce|nfp|payroll|jobs report|unemployment|gdp|treasury|yield|fomc|powell|rate hike|rate cut|rate hold)\b',
@@ -67,13 +63,6 @@ def _rank_crypto_news(articles: list[dict], limit: int = 3) -> list[dict]:
     def score(a: dict) -> int:
         return 1 if _CRYPTO_HIGH_RE.search(a.get("headline", "")) else 0
     return sorted(articles, key=score, reverse=True)[:limit]
-
-
-def _load_watchlist() -> dict:
-    with open(WATCHLIST_PATH) as f:
-        return yaml.safe_load(f)
-
-
 def _de_technicalize_brief(
     brief: str,
     high_impact: list[str] | None = None,
@@ -495,8 +484,9 @@ def _crypto_market_context(symbol: str) -> dict:
 
 # ── Commands ─────────────────────────────────────────────────────────────────
 
-def generate_brief_text() -> tuple[str, str]:
-    watchlist = _load_watchlist()
+def generate_brief_text(watchlist: dict[str, list[str]] | None = None) -> tuple[str, str]:
+    if watchlist is None:
+        watchlist = load_default_watchlist()
     stocks = watchlist.get("stocks", [])
     etfs = watchlist.get("etfs", [])
     crypto_list = watchlist.get("crypto", [])
@@ -633,7 +623,8 @@ def cmd_brief(send_telegram: bool = False) -> None:
     if send_telegram:
         try:
             telegram_text = format_brief_for_telegram(brief, brief_date)
-            send_telegram_message(telegram_text, parse_mode="HTML")
+            sent_messages = send_telegram_message(telegram_text, parse_mode="HTML")
+            maybe_pin_daily_brief(sent_messages)
             print("Telegram delivery: sent")
         except Exception as e:
             print(f"Telegram delivery failed: {e}")

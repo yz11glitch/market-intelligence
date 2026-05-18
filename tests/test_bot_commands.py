@@ -51,6 +51,41 @@ class ParseCommandTests(unittest.TestCase):
     def test_unknown_command_ignored(self) -> None:
         self.assertIsNone(parse_command("/unknown BTC"))
 
+    def test_watchlist_show(self) -> None:
+        parsed = parse_command("/watchlist show")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "watchlist")
+        self.assertEqual(parsed.action, "show")
+        self.assertIsNone(parsed.symbol)
+
+    def test_watchlist_add_normalizes_symbol(self) -> None:
+        parsed = parse_command("/watchlist add btc")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "watchlist")
+        self.assertEqual(parsed.action, "add")
+        self.assertEqual(parsed.symbol, "BTC")
+
+    def test_watchlist_remove(self) -> None:
+        parsed = parse_command("/watchlist remove NVDA")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "watchlist")
+        self.assertEqual(parsed.action, "remove")
+        self.assertEqual(parsed.symbol, "NVDA")
+
+    def test_watchlist_with_bot_suffix(self) -> None:
+        parsed = parse_command("/watchlist@MarketIntelBot show")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "watchlist")
+        self.assertEqual(parsed.action, "show")
+
 
 if __name__ == "__main__":
     unittest.main()

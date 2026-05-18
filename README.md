@@ -15,11 +15,17 @@ This project can send the existing `brief` output to a Telegram group on a GitHu
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
 
+Optional daily brief pinning:
+- `TELEGRAM_PIN_DAILY_BRIEF=true` to pin the sent daily brief message.
+- `TELEGRAM_UNPIN_PREVIOUS_DAILY_BRIEF=true` to unpin the previously tracked pinned daily brief before pinning the new one.
+- Defaults are `false`.
+
 ### Telegram setup
 
 1. Create a bot with **BotFather** and copy the bot token.
 2. Add the bot to your target Telegram group.
 3. Get the group chat ID and set `TELEGRAM_CHAT_ID`.
+4. To pin daily briefs, make the bot a group admin and grant **Pin messages** permission.
 
 ### GitHub Actions setup
 
@@ -41,6 +47,9 @@ Webhook backend supports slash commands in allowed chats:
 - `/why BTC`
 - `/levels ETH`
 - `/tech BTC`
+- `/watchlist show`
+- `/watchlist add BTC`
+- `/watchlist remove NVDA`
 - `/help`
 
 Non-command group messages are ignored.
@@ -50,8 +59,10 @@ Non-command group messages are ignored.
 Set:
 - `TELEGRAM_BOT_TOKEN`
 - `ALLOWED_CHAT_IDS=-1001234567890,123456789`
+- `DATABASE_URL=postgresql://...` (optional; enables per-chat custom watchlists)
 
 `ALLOWED_CHAT_IDS` is a comma-separated allowlist. Chats not in this list are ignored silently.
+If `DATABASE_URL` is not set, `/brief` and `/watchlist show` use `config/watchlist.yaml`, and `/watchlist add/remove` is disabled.
 
 ### Run on Render
 
@@ -77,4 +88,7 @@ You can run the app locally with uvicorn and send sample updates to `/telegram/w
 - `/why TICKER` = mixed narrative with sources
 - `/levels TICKER` = raw levels/moving-average numbers
 - `/tech TICKER` = interpreted technical read from existing technical data
+- `/watchlist show` = show current chat watchlist source + symbols
+- `/watchlist add TICKER` = add symbol to current chat watchlist (group admins only in groups)
+- `/watchlist remove TICKER` = remove symbol from current chat watchlist (group admins only in groups)
 - `/help` = quick command reference

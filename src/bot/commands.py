@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 
-SUPPORTED_COMMANDS = {"brief", "why", "levels", "tech", "help"}
+SUPPORTED_COMMANDS = {"brief", "why", "levels", "tech", "help", "watchlist"}
 SYMBOL_COMMANDS = {"why", "levels", "tech"}
 
 _COMMAND_RE = re.compile(
@@ -12,6 +12,12 @@ _USAGE_BY_COMMAND = {
     "why": "Use: /why BTC",
     "levels": "Use: /levels NVDA",
     "tech": "Use: /tech XRP",
+    "watchlist": (
+        "Use:\n"
+        "/watchlist show\n"
+        "/watchlist add BTC\n"
+        "/watchlist remove NVDA"
+    ),
 }
 
 
@@ -19,6 +25,7 @@ _USAGE_BY_COMMAND = {
 class ParsedCommand:
     command: str
     symbol: str | None = None
+    action: str | None = None
     usage_error: str | None = None
 
 
@@ -48,5 +55,22 @@ def parse_command(text: str) -> ParsedCommand | None:
         if not symbol:
             return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND[command])
         return ParsedCommand(command=command, symbol=symbol)
+
+    if command == "watchlist":
+        if not raw_args:
+            return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["watchlist"])
+
+        args = raw_args.split()
+        action = args[0].lower()
+        if action == "show" and len(args) == 1:
+            return ParsedCommand(command=command, action="show")
+
+        if action in {"add", "remove"} and len(args) == 2:
+            symbol = _SYMBOL_SANITIZE_RE.sub("", args[1]).upper()
+            if not symbol:
+                return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["watchlist"])
+            return ParsedCommand(command=command, action=action, symbol=symbol)
+
+        return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["watchlist"])
 
     return ParsedCommand(command=command)

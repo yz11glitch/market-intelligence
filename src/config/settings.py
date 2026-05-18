@@ -4,6 +4,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class Settings:
     LLM_MODEL_DEFAULT: str = os.getenv("LLM_MODEL_DEFAULT", "gpt-4.1-mini")
     LLM_MODEL_DEEP: str = os.getenv("LLM_MODEL_DEEP", "gpt-4.1")
@@ -16,8 +23,13 @@ class Settings:
     FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
+    TELEGRAM_PIN_DAILY_BRIEF: bool = _env_bool("TELEGRAM_PIN_DAILY_BRIEF", False)
+    TELEGRAM_UNPIN_PREVIOUS_DAILY_BRIEF: bool = _env_bool(
+        "TELEGRAM_UNPIN_PREVIOUS_DAILY_BRIEF", False
+    )
     ALLOWED_CHAT_IDS: str = os.getenv("ALLOWED_CHAT_IDS", "")
     USAGE_REPORT_TOKEN: str = os.getenv("USAGE_REPORT_TOKEN", "")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
 
 settings = Settings()

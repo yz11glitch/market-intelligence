@@ -13,7 +13,15 @@ from src.cli.commands import (
     generate_telegram_why_text,
 )
 from src.config.settings import settings
-from src.delivery.telegram import send_telegram_message
+from src.delivery.telegram import get_chat_member, send_telegram_message
+from src.storage import (
+    add_symbol_to_chat_watchlist,
+    ensure_chat,
+    get_effective_watchlist,
+    is_database_configured,
+    load_default_watchlist,
+    remove_symbol_from_chat_watchlist,
+)
 from src.utils.telegram_formatting import (
     format_brief_for_telegram,
     format_levels_for_telegram,
@@ -42,14 +50,65 @@ def _help_text() -> str:
         "/why SYMBOL\n"
         "/levels SYMBOL\n"
         "/tech SYMBOL\n"
+        "/watchlist show\n"
+        "/watchlist add BTC\n"
+        "/watchlist remove NVDA\n"
         "/help"
     )
 
 
-def _process_command(chat_id: str, parsed: ParsedCommand) -> None:
+def _format_watchlist_text(chat_id: str) -> str:
+    if not is_database_configured():
+        watchlist = load_default_watchlist()
+        header = "Using default watchlist from config/watchlist.yaml (DATABASE_URL is not configured)."
+    else:
+        watchlist, is_custom = get_effective_watchlist(chat_id)
+        header = (
+            "Using custom watchlist for this chat."
+            if is_custom
+            else "Using default watchlist from config/watchlist.yaml."
+        )
+
+    lines = [header, "", "Symbols:"]
+    stocks = watchlist.get("stocks", [])
+    etfs = watchlist.get("etfs", [])
+    crypto = watchlist.get("crypto", [])
+    if stocks:
+        lines.append(f"Stocks: {', '.join(stocks)}")
+    if etfs:
+        lines.append(f"ETFs: {', '.join(etfs)}")
+    if crypto:
+        lines.append(f"Crypto: {', '.join(crypto)}")
+    if not (stocks or etfs or crypto):
+        lines.append("(none)")
+    return "\n".join(lines)
+
+
+def can_manage_watchlist(chat_id: str, user_id: str, chat_type: str) -> bool:
+    if chat_type == "private":
+        return True
+    if not _is_group_chat(chat_type):
+        return False
+    try:
+        member = get_chat_member(chat_id=chat_id, user_id=user_id)
+    except Exception:
+        return False
+    return str(member.get("status", "")).lower() in {"creator", "administrator"}
+
+
+def _process_command(
+    chat_id: str,
+    chat_type: str,
+    chat_title: str | None,
+    user_id: str,
+    parsed: ParsedCommand,
+) -> None:
     if parsed.command == "brief":
         send_telegram_message("Generating market brief...", chat_id=chat_id)
-        brief_date, brief = generate_brief_text()
+        if is_database_configured():
+            ensure_chat(chat_id, chat_type=chat_type, title=chat_title)
+        watchlist, _ = get_effective_watchlist(chat_id)
+        brief_date, brief = generate_brief_text(watchlist=watchlist)
         formatted = format_brief_for_telegram(brief, brief_date)
         send_telegram_message(formatted, parse_mode="HTML", chat_id=chat_id)
         return
@@ -83,6 +142,51 @@ def _process_command(chat_id: str, parsed: ParsedCommand) -> None:
         send_telegram_message(_help_text(), chat_id=chat_id)
         return
 
+    if parsed.command == "watchlist":
+        if parsed.action == "show":
+            send_telegram_message(_format_watchlist_text(chat_id), chat_id=chat_id)
+            return
+
+        if parsed.action in {"add", "remove"}:
+            if not is_database_configured():
+                send_telegram_message(
+                    "Custom watchlists are not enabled yet because DATABASE_URL is not configured.",
+                    chat_id=chat_id,
+                )
+                return
+
+            if not can_manage_watchlist(chat_id=chat_id, user_id=user_id, chat_type=chat_type):
+                send_telegram_message(
+                    "You are not allowed to modify this watchlist. Only group admins can add/remove symbols, and changes are denied if admin status cannot be verified.",
+                    chat_id=chat_id,
+                )
+                return
+
+            symbol = parsed.symbol or ""
+            if parsed.action == "add":
+                status = add_symbol_to_chat_watchlist(
+                    chat_id=chat_id,
+                    symbol=symbol,
+                    chat_type=chat_type,
+                    title=chat_title,
+                )
+                if status == "added":
+                    send_telegram_message(f"Added {symbol.upper()} to this chat watchlist.", chat_id=chat_id)
+                    return
+                if status == "exists":
+                    send_telegram_message(f"{symbol.upper()} is already in this chat watchlist.", chat_id=chat_id)
+                    return
+                raise ValueError("Could not update watchlist right now.")
+
+            status = remove_symbol_from_chat_watchlist(chat_id=chat_id, symbol=symbol)
+            if status == "removed":
+                send_telegram_message(f"Removed {symbol.upper()} from this chat watchlist.", chat_id=chat_id)
+                return
+            if status == "missing":
+                send_telegram_message(f"{symbol.upper()} is not in this chat watchlist.", chat_id=chat_id)
+                return
+            raise ValueError("Could not update watchlist right now.")
+
 
 def _handle_update(update: dict[str, Any]) -> None:
     message = update.get("message")
@@ -103,6 +207,12 @@ def _handle_update(update: dict[str, Any]) -> None:
         return
 
     chat_type = str(chat.get("type", "")).lower()
+    chat_title_raw = chat.get("title") or chat.get("username") or ""
+    chat_title = str(chat_title_raw).strip() or None
+    from_user = message.get("from", {})
+    user_id = str(from_user.get("id", "")).strip()
+    if not user_id:
+        return
     if _is_group_chat(chat_type) and not text.lstrip().startswith("/"):
         return
 
@@ -115,7 +225,7 @@ def _handle_update(update: dict[str, Any]) -> None:
         return
 
     try:
-        _process_command(chat_id, parsed)
+        _process_command(chat_id, chat_type, chat_title, user_id, parsed)
     except ValueError as e:
         send_telegram_message(str(e), chat_id=chat_id)
     except Exception:
