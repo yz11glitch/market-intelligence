@@ -1,0 +1,36 @@
+name: Alerts Scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"
+
+jobs:
+  scan-alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required secrets
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+          ALERTS_SCAN_TOKEN: ${{ secrets.ALERTS_SCAN_TOKEN }}
+        run: |
+          missing=0
+          if [ -z "${RENDER_APP_URL}" ]; then
+            echo "::error::Missing secret: RENDER_APP_URL"
+            missing=1
+          fi
+          if [ -z "${ALERTS_SCAN_TOKEN}" ]; then
+            echo "::error::Missing secret: ALERTS_SCAN_TOKEN"
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Trigger Render alerts scan
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+          ALERTS_SCAN_TOKEN: ${{ secrets.ALERTS_SCAN_TOKEN }}
+        run: |
+          curl --fail --show-error --silent \
+            "${RENDER_APP_URL}/alerts/scan?token=${ALERTS_SCAN_TOKEN}"

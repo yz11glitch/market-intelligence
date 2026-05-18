@@ -37,6 +37,7 @@ Add these repository secrets:
 
 Workflow file:
 - `.github/workflows/daily-brief.yml`
+- `.github/workflows/alerts-scan.yml` (hourly rule-based news scan; no Telegram send yet)
 
 Run it manually from **Actions → Daily Brief → Run workflow** to test.
 
@@ -67,6 +68,10 @@ Set:
 - `TELEGRAM_BOT_TOKEN`
 - `ALLOWED_CHAT_IDS=-1001234567890,123456789`
 - `DATABASE_URL=postgresql://...` (optional; enables per-chat custom watchlists)
+- `ALERTS_SCAN_TOKEN=random-secret` (required for `/alerts/scan`)
+- `ALERT_SCORE_THRESHOLD=8` (optional)
+- `ALERT_MEDIUM_THRESHOLD=6` (optional)
+- `ALERT_EVENT_TTL_HOURS=72` (optional)
 
 `ALLOWED_CHAT_IDS` is a comma-separated allowlist. Chats not in this list are ignored silently.
 If `DATABASE_URL` is not set, `/brief` and `/watchlist show` use `config/watchlist.yaml`, `/watchlist add/remove` is disabled, and `/settings` / `/set_*` commands are disabled.
@@ -82,8 +87,15 @@ Health endpoint:
 Telegram webhook endpoint:
 - `POST /telegram/webhook`
 
+Alerts scan endpoint:
+- `GET /alerts/scan?token=<ALERTS_SCAN_TOKEN>`
+
 Set Telegram webhook:
 `https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=<RENDER_URL>/telegram/webhook`
+
+Set GitHub Actions secrets for hourly scan:
+- `RENDER_APP_URL=https://market-intelligence-rf9p.onrender.com`
+- `ALERTS_SCAN_TOKEN=<same as Render env>`
 
 ### Local webhook testing
 

@@ -1,0 +1,163 @@
+import hashlib
+import re
+from datetime import datetime, timedelta, timezone
+
+from src.alerts.scorer import score_news_event
+from src.config.settings import settings
+from src.data.news import get_general_crypto_news, get_general_market_news
+from src.storage.db import get_connection, is_database_configured
+from src.storage.watchlists import load_default_watchlist
+
+
+def _headline_fingerprint(headline: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", " ", headline.lower()).strip()
+    normalized = re.sub(r"\s+", " ", normalized)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _watchlist_terms() -> list[str]:
+    watchlist = load_default_watchlist()
+    terms: list[str] = []
+    for key in ("stocks", "etfs", "crypto"):
+        for symbol in watchlist.get(key, []):
+            if isinstance(symbol, str) and symbol.strip():
+                terms.append(symbol.strip())
+    return terms
+
+
+def _event_exists(conn, url: str | None, fingerprint: str) -> bool:
+    with conn.cursor() as cur:
+        if url:
+            cur.execute(
+                """
+                SELECT 1
+                FROM news_events
+                WHERE url = %s OR headline_fingerprint = %s
+                LIMIT 1;
+                """,
+                (url, fingerprint),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT 1
+                FROM news_events
+                WHERE headline_fingerprint = %s
+                LIMIT 1;
+                """,
+                (fingerprint,),
+            )
+        return cur.fetchone() is not None
+
+
+def _insert_event(
+    conn,
+    *,
+    url: str | None,
+    headline: str,
+    source: str,
+    symbols: list[str],
+    category: str,
+    impact_score: int,
+    impact_level: str,
+    first_seen_at: datetime,
+    expires_at: datetime,
+    fingerprint: str,
+) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO news_events (
+                url, headline, source, symbols, category, impact_score, impact_level,
+                summary, headline_fingerprint, first_seen_at, expires_at, created_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            """,
+            (
+                url,
+                headline,
+                source,
+                ",".join(symbols) if symbols else "",
+                category,
+                int(impact_score),
+                impact_level,
+                fingerprint,
+                first_seen_at,
+                expires_at,
+            ),
+        )
+    return True
+
+
+def scan_alert_events() -> dict:
+    result = {
+        "ok": True,
+        "fetched": 0,
+        "inserted": 0,
+        "duplicates": 0,
+        "high": 0,
+        "medium": 0,
+    }
+    if not is_database_configured():
+        return {**result, "ok": False, "error": "DATABASE_URL is not configured."}
+
+    market = get_general_market_news(limit=25)
+    crypto = get_general_crypto_news(limit=25)
+    watchlist_terms = _watchlist_terms()
+    now_utc = datetime.now(timezone.utc)
+    ttl = timedelta(hours=max(1, settings.ALERT_EVENT_TTL_HOURS))
+
+    try:
+        conn = get_connection()
+    except Exception as exc:
+        return {**result, "ok": False, "error": str(exc)}
+
+    try:
+        for category, articles in (("market", market), ("crypto", crypto)):
+            for article in articles:
+                headline = str(article.get("headline", "")).strip()
+                if not headline:
+                    continue
+                result["fetched"] += 1
+                source = str(article.get("source", "")).strip()
+                url_raw = str(article.get("url", "")).strip()
+                url = url_raw if url_raw else None
+                fingerprint = _headline_fingerprint(headline)
+
+                if _event_exists(conn, url, fingerprint):
+                    result["duplicates"] += 1
+                    continue
+
+                scored = score_news_event(
+                    headline=headline,
+                    source=source,
+                    category=category,
+                    watchlist_terms=watchlist_terms,
+                )
+                level = str(scored["impact_level"])
+                if level not in {"high", "medium"}:
+                    continue
+
+                _insert_event(
+                    conn,
+                    url=url,
+                    headline=headline,
+                    source=source,
+                    symbols=list(scored["matched_symbols"]),
+                    category=str(scored["category"]),
+                    impact_score=int(scored["impact_score"]),
+                    impact_level=level,
+                    first_seen_at=now_utc,
+                    expires_at=now_utc + ttl,
+                    fingerprint=fingerprint,
+                )
+                result["inserted"] += 1
+                result[level] += 1
+
+        conn.commit()
+        return result
+    except Exception as exc:
+        conn.rollback()
+        return {**result, "ok": False, "error": str(exc)}
+    finally:
+        conn.close()

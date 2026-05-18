@@ -64,6 +64,33 @@ def _create_tables_if_needed() -> None:
                     );
                     """
                 )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS news_events (
+                        id SERIAL PRIMARY KEY,
+                        url TEXT UNIQUE,
+                        headline TEXT NOT NULL,
+                        source TEXT,
+                        symbols TEXT,
+                        category TEXT,
+                        impact_score INTEGER NOT NULL,
+                        impact_level TEXT NOT NULL,
+                        summary TEXT,
+                        headline_fingerprint TEXT UNIQUE,
+                        first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        expires_at TIMESTAMP NOT NULL,
+                        alerted_at TIMESTAMP,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """
+                )
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_news_events_impact_level ON news_events (impact_level);"
+                )
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_news_events_expires_at ON news_events (expires_at);"
+                )
             conn.commit()
             _SCHEMA_READY = True
         finally:

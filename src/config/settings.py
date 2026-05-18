@@ -30,6 +30,10 @@ class Settings:
     ALLOWED_CHAT_IDS: str = os.getenv("ALLOWED_CHAT_IDS", "")
     USAGE_REPORT_TOKEN: str = os.getenv("USAGE_REPORT_TOKEN", "")
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    ALERTS_SCAN_TOKEN: str = os.getenv("ALERTS_SCAN_TOKEN", "")
+    ALERT_SCORE_THRESHOLD: int = int(os.getenv("ALERT_SCORE_THRESHOLD", "8"))
+    ALERT_MEDIUM_THRESHOLD: int = int(os.getenv("ALERT_MEDIUM_THRESHOLD", "6"))
+    ALERT_EVENT_TTL_HOURS: int = int(os.getenv("ALERT_EVENT_TTL_HOURS", "72"))
 
 
 settings = Settings()

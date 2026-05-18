@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from src.alerts.scanner import scan_alert_events
 from src.bot.commands import ParsedCommand, parse_command
 from src.cli.commands import (
     generate_brief_text,
@@ -456,6 +457,17 @@ async def usage_daily_report(request: Request) -> JSONResponse:
     send_telegram_message(report, parse_mode="HTML")
 
     return JSONResponse({"ok": True, "date": yesterday, "estimated_cost_usd": round(cost, 6)})
+
+
+@app.get("/alerts/scan")
+async def alerts_scan(request: Request) -> JSONResponse:
+    token = request.query_params.get("token", "")
+    expected = settings.ALERTS_SCAN_TOKEN
+    if not expected or token != expected:
+        return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
+    summary = scan_alert_events()
+    status_code = 200 if summary.get("ok") else 500
+    return JSONResponse(summary, status_code=status_code)
 
 
 @app.post("/telegram/webhook")
