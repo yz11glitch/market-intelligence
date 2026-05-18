@@ -3,6 +3,7 @@ name: Daily Brief
 on:
   workflow_dispatch:
   schedule:
+    # 01:00 UTC = 09:00 Singapore/Malaysia time
     - cron: "0 1 * * *"
 
 jobs:
@@ -17,8 +18,64 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Debug environment
+        run: |
+          echo "Python version:"
+          python --version
+          echo "pip version:"
+          python -m pip --version
+          echo "Working directory:"
+          pwd
+          echo "Repository root files:"
+          ls -la
+          echo "Workflow files:"
+          ls -la .github/workflows
+          echo "Key project files:"
+          ls -la main.py requirements.txt src || true
+
+      - name: Confirm main branch
+        run: |
+          echo "GITHUB_REF=$GITHUB_REF"
+          echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "::error::This workflow should run from main branch."
+            exit 1
+          fi
+
+      - name: Check required secrets
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          missing_required=0
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "::error::Missing secret: OPENAI_API_KEY"
+            missing_required=1
+          fi
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ]; then
+            echo "::error::Missing secret: TELEGRAM_BOT_TOKEN"
+            missing_required=1
+          fi
+          if [ -z "${TELEGRAM_CHAT_ID}" ]; then
+            echo "::error::Missing secret: TELEGRAM_CHAT_ID"
+            missing_required=1
+          fi
+          if [ -z "${FINNHUB_API_KEY}" ]; then
+            echo "::warning::Missing secret: FINNHUB_API_KEY (continuing)"
+          fi
+          if [ "${missing_required}" -ne 0 ]; then
+            exit 1
+          fi
+
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Prepare runtime directories
+        run: mkdir -p data .cache
 
       - name: Generate and send brief
         env:
