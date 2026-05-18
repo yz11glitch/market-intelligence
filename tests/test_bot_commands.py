@@ -106,6 +106,52 @@ class ParseCommandTests(unittest.TestCase):
         self.assertEqual(parsed.action, "remove")
         self.assertEqual(parsed.symbols, ["DOGE", "XRP", "SOL"])
 
+    def test_settings_command(self) -> None:
+        parsed = parse_command("/settings")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "settings")
+
+    def test_set_branding_command(self) -> None:
+        parsed = parse_command("/set_branding Crypto Crew")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "set_branding")
+        self.assertEqual(parsed.value, "Crypto Crew")
+
+    def test_set_timezone_command(self) -> None:
+        parsed = parse_command("/set_timezone Asia/Singapore")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "set_timezone")
+        self.assertEqual(parsed.value, "Asia/Singapore")
+
+    def test_set_brief_time_command(self) -> None:
+        parsed = parse_command("/set_brief_time 09:00")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "set_brief_time")
+        self.assertEqual(parsed.value, "09:00")
+
+    def test_set_pin_brief_command(self) -> None:
+        parsed = parse_command("/set_pin_brief on")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "set_pin_brief")
+        self.assertEqual(parsed.value, "on")
+
+    def test_set_pin_brief_invalid_value(self) -> None:
+        parsed = parse_command("/set_pin_brief maybe")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.usage_error, "Use: /set_pin_brief on")
+
 
 if __name__ == "__main__":
     unittest.main()

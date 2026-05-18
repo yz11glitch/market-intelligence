@@ -1,7 +1,19 @@
 import re
 from dataclasses import dataclass
 
-SUPPORTED_COMMANDS = {"brief", "why", "levels", "tech", "help", "watchlist"}
+SUPPORTED_COMMANDS = {
+    "brief",
+    "why",
+    "levels",
+    "tech",
+    "help",
+    "watchlist",
+    "settings",
+    "set_branding",
+    "set_timezone",
+    "set_brief_time",
+    "set_pin_brief",
+}
 SYMBOL_COMMANDS = {"why", "levels", "tech"}
 
 _COMMAND_RE = re.compile(
@@ -18,6 +30,11 @@ _USAGE_BY_COMMAND = {
         "/watchlist add BTC ETH SOL\n"
         "/watchlist remove NVDA TSLA"
     ),
+    "settings": "Use: /settings",
+    "set_branding": "Use: /set_branding Crypto Crew",
+    "set_timezone": "Use: /set_timezone Asia/Singapore",
+    "set_brief_time": "Use: /set_brief_time 09:00",
+    "set_pin_brief": "Use: /set_pin_brief on",
 }
 
 
@@ -27,6 +44,7 @@ class ParsedCommand:
     symbol: str | None = None
     symbols: list[str] | None = None
     action: str | None = None
+    value: str | None = None
     usage_error: str | None = None
 
 
@@ -85,5 +103,36 @@ def parse_command(text: str) -> ParsedCommand | None:
             )
 
         return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["watchlist"])
+
+    if command == "settings":
+        if raw_args:
+            return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["settings"])
+        return ParsedCommand(command=command)
+
+    if command == "set_branding":
+        if not raw_args:
+            return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["set_branding"])
+        return ParsedCommand(command=command, value=raw_args)
+
+    if command == "set_timezone":
+        args = raw_args.split()
+        if len(args) != 1:
+            return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["set_timezone"])
+        return ParsedCommand(command=command, value=args[0])
+
+    if command == "set_brief_time":
+        args = raw_args.split()
+        if len(args) != 1:
+            return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["set_brief_time"])
+        return ParsedCommand(command=command, value=args[0])
+
+    if command == "set_pin_brief":
+        args = raw_args.split()
+        if len(args) != 1:
+            return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["set_pin_brief"])
+        value = args[0].lower()
+        if value not in {"on", "off"}:
+            return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["set_pin_brief"])
+        return ParsedCommand(command=command, value=value)
 
     return ParsedCommand(command=command)

@@ -51,8 +51,8 @@ def _format_watch_item(line: str) -> str:
     return f"• {html.escape(raw)}"
 
 
-def format_brief_for_telegram(brief_text: str, date_str: str) -> str:
-    lines_out: list[str] = [f"📊 <b>MARKET BRIEF — {html.escape(date_str)}</b>", ""]
+def format_brief_for_telegram(brief_text: str, date_str: str, brief_title: str = "MARKET BRIEF") -> str:
+    lines_out: list[str] = [f"📊 <b>{html.escape(brief_title)} — {html.escape(date_str)}</b>", ""]
     section: str | None = None
 
     for raw in brief_text.splitlines():

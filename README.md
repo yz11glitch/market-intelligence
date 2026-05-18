@@ -47,6 +47,11 @@ Webhook backend supports slash commands in allowed chats:
 - `/why BTC`
 - `/levels ETH`
 - `/tech BTC`
+- `/settings`
+- `/set_branding Crypto Crew`
+- `/set_timezone Asia/Singapore`
+- `/set_brief_time 09:00`
+- `/set_pin_brief on`
 - `/watchlist show`
 - `/watchlist add BTC ETH SOL`
 - `/watchlist remove NVDA TSLA`
@@ -62,7 +67,7 @@ Set:
 - `DATABASE_URL=postgresql://...` (optional; enables per-chat custom watchlists)
 
 `ALLOWED_CHAT_IDS` is a comma-separated allowlist. Chats not in this list are ignored silently.
-If `DATABASE_URL` is not set, `/brief` and `/watchlist show` use `config/watchlist.yaml`, and `/watchlist add/remove` is disabled.
+If `DATABASE_URL` is not set, `/brief` and `/watchlist show` use `config/watchlist.yaml`, `/watchlist add/remove` is disabled, and `/settings` / `/set_*` commands are disabled.
 
 ### Run on Render
 
@@ -88,6 +93,11 @@ You can run the app locally with uvicorn and send sample updates to `/telegram/w
 - `/why TICKER` = mixed narrative with sources
 - `/levels TICKER` = raw levels/moving-average numbers
 - `/tech TICKER` = interpreted technical read from existing technical data
+- `/settings` = show chat settings (branding/title, timezone, brief time, pin setting, custom watchlist)
+- `/set_branding TEXT` = set brief title branding for this chat (group admins only in groups)
+- `/set_timezone TIMEZONE` = set timezone (group admins only in groups)
+- `/set_brief_time HH:MM` = store preferred brief time for future scheduled briefs (group admins only in groups)
+- `/set_pin_brief on|off` = control pin behavior for Telegram `/brief` in this chat (group admins only in groups)
 - `/watchlist show` = show current chat watchlist source + symbols
 - `/watchlist add TICKER [TICKER...]` = add one or more symbols to current chat watchlist (group admins only in groups)
 - `/watchlist remove TICKER [TICKER...]` = remove one or more symbols from current chat watchlist (group admins only in groups)

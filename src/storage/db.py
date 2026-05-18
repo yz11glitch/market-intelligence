@@ -51,6 +51,19 @@ def _create_tables_if_needed() -> None:
                     );
                     """
                 )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS chat_settings (
+                        chat_id TEXT PRIMARY KEY REFERENCES chats(chat_id) ON DELETE CASCADE,
+                        branding TEXT,
+                        timezone TEXT NOT NULL DEFAULT 'Asia/Singapore',
+                        brief_time TEXT NOT NULL DEFAULT '09:00',
+                        pin_daily_brief BOOLEAN NOT NULL DEFAULT FALSE,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """
+                )
             conn.commit()
             _SCHEMA_READY = True
         finally:

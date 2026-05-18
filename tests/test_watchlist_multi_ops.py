@@ -30,7 +30,7 @@ class WatchlistMultiOpsTests(unittest.TestCase):
         parsed = ParsedCommand(command="watchlist", action="add", symbols=["VOO", "QQQ", "BTC"])
         with (
             patch("src.web.app.is_database_configured", return_value=True),
-            patch("src.web.app.can_manage_watchlist", return_value=True),
+            patch("src.web.app.can_manage_chat", return_value=True),
             patch("src.web.app.add_symbol_to_chat_watchlist", side_effect=["added", "exists", "added"]),
             patch("src.web.app.send_telegram_message") as send_mock,
         ):
@@ -45,7 +45,7 @@ class WatchlistMultiOpsTests(unittest.TestCase):
         parsed = ParsedCommand(command="watchlist", action="remove", symbols=["DOGE", "XRP", "PEPE"])
         with (
             patch("src.web.app.is_database_configured", return_value=True),
-            patch("src.web.app.can_manage_watchlist", return_value=True),
+            patch("src.web.app.can_manage_chat", return_value=True),
             patch("src.web.app.remove_symbol_from_chat_watchlist", side_effect=["removed", "removed", "missing"]),
             patch("src.web.app.send_telegram_message") as send_mock,
         ):

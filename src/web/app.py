@@ -13,14 +13,19 @@ from src.cli.commands import (
     generate_telegram_why_text,
 )
 from src.config.settings import settings
-from src.delivery.telegram import get_chat_member, send_telegram_message
+from src.delivery.telegram import get_chat_member, pin_telegram_message, send_telegram_message
 from src.storage import (
     add_symbol_to_chat_watchlist,
     ensure_chat,
+    get_chat_settings,
     get_effective_watchlist,
     is_database_configured,
     load_default_watchlist,
     remove_symbol_from_chat_watchlist,
+    set_chat_branding,
+    set_chat_brief_time,
+    set_chat_pin_daily_brief,
+    set_chat_timezone,
 )
 from src.utils.telegram_formatting import (
     format_brief_for_telegram,
@@ -50,6 +55,11 @@ def _help_text() -> str:
         "/why SYMBOL\n"
         "/levels SYMBOL\n"
         "/tech SYMBOL\n"
+        "/settings\n"
+        "/set_branding Crypto Crew\n"
+        "/set_timezone Asia/Singapore\n"
+        "/set_brief_time 09:00\n"
+        "/set_pin_brief on\n"
         "/watchlist show\n"
         "/watchlist add BTC ETH SOL\n"
         "/watchlist remove NVDA TSLA\n"
@@ -84,7 +94,7 @@ def _format_watchlist_text(chat_id: str) -> str:
     return "\n".join(lines)
 
 
-def can_manage_watchlist(chat_id: str, user_id: str, chat_type: str) -> bool:
+def can_manage_chat(chat_id: str, user_id: str, chat_type: str) -> bool:
     if chat_type == "private":
         return True
     if not _is_group_chat(chat_type):
@@ -94,6 +104,22 @@ def can_manage_watchlist(chat_id: str, user_id: str, chat_type: str) -> bool:
     except Exception:
         return False
     return str(member.get("status", "")).lower() in {"creator", "administrator"}
+
+
+def _format_settings_text(chat_id: str, settings_payload: dict, custom_watchlist: bool) -> str:
+    branding = settings_payload.get("branding") or "(default)"
+    timezone = settings_payload.get("timezone") or "Asia/Singapore"
+    brief_time = settings_payload.get("brief_time") or "09:00"
+    pin_daily_brief = bool(settings_payload.get("pin_daily_brief"))
+    lines = [
+        "Settings for this chat:",
+        f"- Branding/title: {branding}",
+        f"- Timezone: {timezone}",
+        f"- Brief time: {brief_time}",
+        f"- Pin daily brief: {'on' if pin_daily_brief else 'off'}",
+        f"- Custom watchlist: {'yes' if custom_watchlist else 'no'}",
+    ]
+    return "\n".join(lines)
 
 
 def _build_watchlist_batch_summary(
@@ -128,12 +154,24 @@ def _process_command(
 ) -> None:
     if parsed.command == "brief":
         send_telegram_message("Generating market brief...", chat_id=chat_id)
+        chat_settings = get_chat_settings(chat_id)
         if is_database_configured():
             ensure_chat(chat_id, chat_type=chat_type, title=chat_title)
         watchlist, _ = get_effective_watchlist(chat_id)
         brief_date, brief = generate_brief_text(watchlist=watchlist)
-        formatted = format_brief_for_telegram(brief, brief_date)
-        send_telegram_message(formatted, parse_mode="HTML", chat_id=chat_id)
+        branding = str(chat_settings.get("branding") or "").strip()
+        brief_title = f"{branding} Market Brief" if branding else "MARKET BRIEF"
+        formatted = format_brief_for_telegram(brief, brief_date, brief_title=brief_title)
+        sent_messages = send_telegram_message(formatted, parse_mode="HTML", chat_id=chat_id)
+        if bool(chat_settings.get("pin_daily_brief")) and sent_messages:
+            message_id_raw = sent_messages[0].get("message_id")
+            try:
+                message_id = int(message_id_raw)
+                pin_telegram_message(message_id, chat_id=chat_id, disable_notification=True)
+            except (TypeError, ValueError):
+                pass
+            except Exception:
+                pass
         return
 
     if parsed.command == "why":
@@ -165,6 +203,81 @@ def _process_command(
         send_telegram_message(_help_text(), chat_id=chat_id)
         return
 
+    if parsed.command == "settings":
+        if not is_database_configured():
+            send_telegram_message(
+                "Custom settings are not enabled yet because DATABASE_URL is not configured.",
+                chat_id=chat_id,
+            )
+            return
+        ensure_chat(chat_id, chat_type=chat_type, title=chat_title)
+        chat_settings = get_chat_settings(chat_id)
+        _, custom_watchlist = get_effective_watchlist(chat_id)
+        send_telegram_message(
+            _format_settings_text(chat_id, chat_settings, custom_watchlist),
+            chat_id=chat_id,
+        )
+        return
+
+    if parsed.command in {"set_branding", "set_timezone", "set_brief_time", "set_pin_brief"}:
+        if not is_database_configured():
+            send_telegram_message(
+                "Custom settings are not enabled yet because DATABASE_URL is not configured.",
+                chat_id=chat_id,
+            )
+            return
+        if not can_manage_chat(chat_id=chat_id, user_id=user_id, chat_type=chat_type):
+            send_telegram_message(
+                "You are not allowed to modify settings. Only group admins can change settings, and changes are denied if admin status cannot be verified.",
+                chat_id=chat_id,
+            )
+            return
+
+        if parsed.command == "set_branding":
+            value = (parsed.value or "").strip()
+            status = set_chat_branding(chat_id, value, chat_type=chat_type, title=chat_title)
+            if status == "saved":
+                send_telegram_message(f"Saved branding/title: {value}", chat_id=chat_id)
+                return
+            if status == "invalid":
+                raise ValueError("Use: /set_branding Crypto Crew")
+            raise ValueError("Could not save settings right now.")
+
+        if parsed.command == "set_timezone":
+            value = (parsed.value or "").strip()
+            status = set_chat_timezone(chat_id, value, chat_type=chat_type, title=chat_title)
+            if status == "saved":
+                send_telegram_message(f"Saved timezone: {value}", chat_id=chat_id)
+                return
+            if status == "invalid":
+                raise ValueError("Invalid timezone. Example: /set_timezone Asia/Singapore")
+            raise ValueError("Could not save settings right now.")
+
+        if parsed.command == "set_brief_time":
+            value = (parsed.value or "").strip()
+            status = set_chat_brief_time(chat_id, value, chat_type=chat_type, title=chat_title)
+            if status == "saved":
+                send_telegram_message(
+                    "Saved. Per-group scheduled briefs are not enabled yet; this will be used later.",
+                    chat_id=chat_id,
+                )
+                return
+            if status == "invalid":
+                raise ValueError("Invalid time. Example: /set_brief_time 09:00")
+            raise ValueError("Could not save settings right now.")
+
+        value = (parsed.value or "").strip().lower()
+        status = set_chat_pin_daily_brief(
+            chat_id,
+            enabled=(value == "on"),
+            chat_type=chat_type,
+            title=chat_title,
+        )
+        if status == "saved":
+            send_telegram_message(f"Saved pin daily brief: {value}", chat_id=chat_id)
+            return
+        raise ValueError("Could not save settings right now.")
+
     if parsed.command == "watchlist":
         if parsed.action == "show":
             send_telegram_message(_format_watchlist_text(chat_id), chat_id=chat_id)
@@ -178,7 +291,7 @@ def _process_command(
                 )
                 return
 
-            if not can_manage_watchlist(chat_id=chat_id, user_id=user_id, chat_type=chat_type):
+            if not can_manage_chat(chat_id=chat_id, user_id=user_id, chat_type=chat_type):
                 send_telegram_message(
                     "You are not allowed to modify this watchlist. Only group admins can add/remove symbols, and changes are denied if admin status cannot be verified.",
                     chat_id=chat_id,
