@@ -51,8 +51,8 @@ def _help_text() -> str:
         "/levels SYMBOL\n"
         "/tech SYMBOL\n"
         "/watchlist show\n"
-        "/watchlist add BTC\n"
-        "/watchlist remove NVDA\n"
+        "/watchlist add BTC ETH SOL\n"
+        "/watchlist remove NVDA TSLA\n"
         "/help"
     )
 
@@ -94,6 +94,29 @@ def can_manage_watchlist(chat_id: str, user_id: str, chat_type: str) -> bool:
     except Exception:
         return False
     return str(member.get("status", "")).lower() in {"creator", "administrator"}
+
+
+def _build_watchlist_batch_summary(
+    action: str,
+    added: list[str],
+    existed: list[str],
+    removed: list[str],
+    missing: list[str],
+) -> str:
+    lines: list[str] = []
+    if action == "add":
+        if added:
+            lines.append(f"Added: {', '.join(added)}")
+        if existed:
+            lines.append(f"Already existed: {', '.join(existed)}")
+    else:
+        if removed:
+            lines.append(f"Removed: {', '.join(removed)}")
+        if missing:
+            lines.append(f"Not found: {', '.join(missing)}")
+    if not lines:
+        return "No symbols were changed."
+    return "\n".join(lines)
 
 
 def _process_command(
@@ -162,30 +185,60 @@ def _process_command(
                 )
                 return
 
-            symbol = parsed.symbol or ""
-            if parsed.action == "add":
-                status = add_symbol_to_chat_watchlist(
-                    chat_id=chat_id,
-                    symbol=symbol,
-                    chat_type=chat_type,
-                    title=chat_title,
-                )
-                if status == "added":
-                    send_telegram_message(f"Added {symbol.upper()} to this chat watchlist.", chat_id=chat_id)
-                    return
-                if status == "exists":
-                    send_telegram_message(f"{symbol.upper()} is already in this chat watchlist.", chat_id=chat_id)
-                    return
-                raise ValueError("Could not update watchlist right now.")
+            symbols = parsed.symbols or ([parsed.symbol] if parsed.symbol else [])
+            if not symbols:
+                raise ValueError("Use:\n/watchlist show\n/watchlist add BTC\n/watchlist remove NVDA")
 
-            status = remove_symbol_from_chat_watchlist(chat_id=chat_id, symbol=symbol)
-            if status == "removed":
-                send_telegram_message(f"Removed {symbol.upper()} from this chat watchlist.", chat_id=chat_id)
+            added: list[str] = []
+            existed: list[str] = []
+            removed: list[str] = []
+            missing: list[str] = []
+
+            if parsed.action == "add":
+                for symbol in symbols:
+                    status = add_symbol_to_chat_watchlist(
+                        chat_id=chat_id,
+                        symbol=symbol,
+                        chat_type=chat_type,
+                        title=chat_title,
+                    )
+                    if status == "added":
+                        added.append(symbol)
+                    elif status == "exists":
+                        existed.append(symbol)
+                    else:
+                        raise ValueError("Could not update watchlist right now.")
+                send_telegram_message(
+                    _build_watchlist_batch_summary(
+                        action="add",
+                        added=added,
+                        existed=existed,
+                        removed=[],
+                        missing=[],
+                    ),
+                    chat_id=chat_id,
+                )
                 return
-            if status == "missing":
-                send_telegram_message(f"{symbol.upper()} is not in this chat watchlist.", chat_id=chat_id)
-                return
-            raise ValueError("Could not update watchlist right now.")
+
+            for symbol in symbols:
+                status = remove_symbol_from_chat_watchlist(chat_id=chat_id, symbol=symbol)
+                if status == "removed":
+                    removed.append(symbol)
+                elif status == "missing":
+                    missing.append(symbol)
+                else:
+                    raise ValueError("Could not update watchlist right now.")
+            send_telegram_message(
+                _build_watchlist_batch_summary(
+                    action="remove",
+                    added=[],
+                    existed=[],
+                    removed=removed,
+                    missing=missing,
+                ),
+                chat_id=chat_id,
+            )
+            return
 
 
 def _handle_update(update: dict[str, Any]) -> None:

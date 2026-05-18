@@ -48,8 +48,8 @@ Webhook backend supports slash commands in allowed chats:
 - `/levels ETH`
 - `/tech BTC`
 - `/watchlist show`
-- `/watchlist add BTC`
-- `/watchlist remove NVDA`
+- `/watchlist add BTC ETH SOL`
+- `/watchlist remove NVDA TSLA`
 - `/help`
 
 Non-command group messages are ignored.
@@ -89,6 +89,6 @@ You can run the app locally with uvicorn and send sample updates to `/telegram/w
 - `/levels TICKER` = raw levels/moving-average numbers
 - `/tech TICKER` = interpreted technical read from existing technical data
 - `/watchlist show` = show current chat watchlist source + symbols
-- `/watchlist add TICKER` = add symbol to current chat watchlist (group admins only in groups)
-- `/watchlist remove TICKER` = remove symbol from current chat watchlist (group admins only in groups)
+- `/watchlist add TICKER [TICKER...]` = add one or more symbols to current chat watchlist (group admins only in groups)
+- `/watchlist remove TICKER [TICKER...]` = remove one or more symbols from current chat watchlist (group admins only in groups)
 - `/help` = quick command reference

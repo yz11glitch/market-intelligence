@@ -68,6 +68,7 @@ class ParseCommandTests(unittest.TestCase):
         self.assertEqual(parsed.command, "watchlist")
         self.assertEqual(parsed.action, "add")
         self.assertEqual(parsed.symbol, "BTC")
+        self.assertEqual(parsed.symbols, ["BTC"])
 
     def test_watchlist_remove(self) -> None:
         parsed = parse_command("/watchlist remove NVDA")
@@ -77,6 +78,7 @@ class ParseCommandTests(unittest.TestCase):
         self.assertEqual(parsed.command, "watchlist")
         self.assertEqual(parsed.action, "remove")
         self.assertEqual(parsed.symbol, "NVDA")
+        self.assertEqual(parsed.symbols, ["NVDA"])
 
     def test_watchlist_with_bot_suffix(self) -> None:
         parsed = parse_command("/watchlist@MarketIntelBot show")
@@ -85,6 +87,24 @@ class ParseCommandTests(unittest.TestCase):
             return
         self.assertEqual(parsed.command, "watchlist")
         self.assertEqual(parsed.action, "show")
+
+    def test_watchlist_add_multiple_symbols_normalized_and_deduped(self) -> None:
+        parsed = parse_command("/watchlist add voo qqq BTC btc  !!! eth")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "watchlist")
+        self.assertEqual(parsed.action, "add")
+        self.assertEqual(parsed.symbols, ["VOO", "QQQ", "BTC", "ETH"])
+
+    def test_watchlist_remove_multiple_symbols(self) -> None:
+        parsed = parse_command("/watchlist remove doge XRP sol")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "watchlist")
+        self.assertEqual(parsed.action, "remove")
+        self.assertEqual(parsed.symbols, ["DOGE", "XRP", "SOL"])
 
 
 if __name__ == "__main__":

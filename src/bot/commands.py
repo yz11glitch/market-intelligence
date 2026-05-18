@@ -15,8 +15,8 @@ _USAGE_BY_COMMAND = {
     "watchlist": (
         "Use:\n"
         "/watchlist show\n"
-        "/watchlist add BTC\n"
-        "/watchlist remove NVDA"
+        "/watchlist add BTC ETH SOL\n"
+        "/watchlist remove NVDA TSLA"
     ),
 }
 
@@ -25,6 +25,7 @@ _USAGE_BY_COMMAND = {
 class ParsedCommand:
     command: str
     symbol: str | None = None
+    symbols: list[str] | None = None
     action: str | None = None
     usage_error: str | None = None
 
@@ -65,11 +66,23 @@ def parse_command(text: str) -> ParsedCommand | None:
         if action == "show" and len(args) == 1:
             return ParsedCommand(command=command, action="show")
 
-        if action in {"add", "remove"} and len(args) == 2:
-            symbol = _SYMBOL_SANITIZE_RE.sub("", args[1]).upper()
-            if not symbol:
+        if action in {"add", "remove"} and len(args) >= 2:
+            symbols: list[str] = []
+            seen: set[str] = set()
+            for raw_symbol in args[1:]:
+                symbol = _SYMBOL_SANITIZE_RE.sub("", raw_symbol).upper()
+                if not symbol or symbol in seen:
+                    continue
+                seen.add(symbol)
+                symbols.append(symbol)
+            if not symbols:
                 return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["watchlist"])
-            return ParsedCommand(command=command, action=action, symbol=symbol)
+            return ParsedCommand(
+                command=command,
+                action=action,
+                symbol=symbols[0],
+                symbols=symbols,
+            )
 
         return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["watchlist"])
 
