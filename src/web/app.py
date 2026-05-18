@@ -48,22 +48,49 @@ def _is_group_chat(chat_type: str) -> bool:
     return chat_type in {"group", "supergroup"}
 
 
+def _start_text() -> str:
+    return (
+        "👋 <b>Welcome</b>\n"
+        "I send stock + crypto market briefs to this chat.\n\n"
+        "<b>Quick commands</b>\n"
+        "• /brief\n"
+        "• /why BTC\n"
+        "• /tech BTC\n"
+        "• /levels BTC\n"
+        "• /watchlist show\n"
+        "• /help\n"
+        "• /adminhelp"
+    )
+
+
 def _help_text() -> str:
     return (
-        "Commands:\n"
-        "/brief\n"
-        "/why SYMBOL\n"
-        "/levels SYMBOL\n"
-        "/tech SYMBOL\n"
-        "/settings\n"
-        "/set_branding Crypto Crew\n"
-        "/set_timezone Asia/Singapore\n"
-        "/set_brief_time 09:00\n"
-        "/set_pin_brief on\n"
-        "/watchlist show\n"
-        "/watchlist add BTC ETH SOL\n"
-        "/watchlist remove NVDA TSLA\n"
-        "/help"
+        "🙋 <b>Member help</b>\n"
+        "Use these commands in this chat:\n"
+        "• /brief\n"
+        "• /why SYMBOL\n"
+        "• /tech SYMBOL\n"
+        "• /levels SYMBOL\n"
+        "• /watchlist show\n"
+        "• /settings\n\n"
+        "Need setup commands? Use /adminhelp."
+    )
+
+
+def _admin_help_text() -> str:
+    return (
+        "🛠 <b>Admin setup help</b>\n"
+        "Admin-only commands:\n"
+        "• /watchlist add BTC NVDA ETH\n"
+        "• /watchlist remove DOGE\n"
+        "• /watchlist import default\n"
+        "• /watchlist reset default\n"
+        "• /watchlist clear\n"
+        "• /set_branding TEXT\n"
+        "• /set_timezone Asia/Singapore\n"
+        "• /set_brief_time 09:00\n"
+        "• /set_pin_brief on/off\n\n"
+        "In groups, only admins can change watchlists/settings."
     )
 
 
@@ -199,8 +226,16 @@ def _process_command(
         send_telegram_message(format_tech_for_telegram(result), parse_mode="HTML", chat_id=chat_id)
         return
 
+    if parsed.command == "start":
+        send_telegram_message(_start_text(), parse_mode="HTML", chat_id=chat_id)
+        return
+
     if parsed.command == "help":
-        send_telegram_message(_help_text(), chat_id=chat_id)
+        send_telegram_message(_help_text(), parse_mode="HTML", chat_id=chat_id)
+        return
+
+    if parsed.command == "adminhelp":
+        send_telegram_message(_admin_help_text(), parse_mode="HTML", chat_id=chat_id)
         return
 
     if parsed.command == "settings":

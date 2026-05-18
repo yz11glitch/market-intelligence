@@ -2,11 +2,13 @@ import re
 from dataclasses import dataclass
 
 SUPPORTED_COMMANDS = {
+    "start",
     "brief",
     "why",
     "levels",
     "tech",
     "help",
+    "adminhelp",
     "watchlist",
     "settings",
     "set_branding",
@@ -35,6 +37,9 @@ _USAGE_BY_COMMAND = {
     "set_timezone": "Use: /set_timezone Asia/Singapore",
     "set_brief_time": "Use: /set_brief_time 09:00",
     "set_pin_brief": "Use: /set_pin_brief on",
+    "start": "Use: /start",
+    "help": "Use: /help",
+    "adminhelp": "Use: /adminhelp",
 }
 
 
@@ -107,6 +112,11 @@ def parse_command(text: str) -> ParsedCommand | None:
     if command == "settings":
         if raw_args:
             return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND["settings"])
+        return ParsedCommand(command=command)
+
+    if command in {"start", "help", "adminhelp"}:
+        if raw_args:
+            return ParsedCommand(command=command, usage_error=_USAGE_BY_COMMAND[command])
         return ParsedCommand(command=command)
 
     if command == "set_branding":

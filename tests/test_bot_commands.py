@@ -19,6 +19,23 @@ class ParseCommandTests(unittest.TestCase):
             return
         self.assertEqual(parsed.command, "brief")
 
+    def test_start_and_adminhelp_with_bot_suffix(self) -> None:
+        start = parse_command("/start@MarketIntelBot")
+        adminhelp = parse_command("/adminhelp@MarketIntelBot")
+        self.assertIsNotNone(start)
+        self.assertIsNotNone(adminhelp)
+        if start is None or adminhelp is None:
+            return
+        self.assertEqual(start.command, "start")
+        self.assertEqual(adminhelp.command, "adminhelp")
+
+    def test_help_with_bot_suffix(self) -> None:
+        parsed = parse_command("/help@MarketIntelBot")
+        self.assertIsNotNone(parsed)
+        if parsed is None:
+            return
+        self.assertEqual(parsed.command, "help")
+
     def test_why_command_normalizes_symbol(self) -> None:
         parsed = parse_command("/why@MarketIntelBot btc")
         self.assertIsNotNone(parsed)
