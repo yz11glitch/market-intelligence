@@ -2,7 +2,7 @@ import html
 import re
 
 
-SECTION_ORDER = ("INDEXES", "STOCKS", "CRYPTO", "WATCH NEXT")
+SECTION_ORDER = ("MARKET MOOD", "BIG MARKET NEWS", "BIG CRYPTO NEWS", "WATCHLIST", "UPCOMING")
 _WHY_HEADER_RE = re.compile(
     r"^WHY\s+(?P<symbol>[A-Za-z0-9.\-]+)\?\s+Price:\s+(?P<price>\$[0-9][0-9,]*(?:\.[0-9]+)?[kK]?)"
     r"(?:\s+1D\s+(?P<d1>[+\-]?\d+(?:\.\d+)?%|N/A))?"
@@ -18,6 +18,10 @@ _TECH_HEADER_RE = re.compile(
 )
 _CONFIDENCE_RE = re.compile(r"\[Confidence:[^\]]+\]", re.IGNORECASE)
 _URL_RE = re.compile(r"https?://\S+")
+
+
+_BULLET_SECTIONS = frozenset({"MARKET MOOD", "BIG MARKET NEWS", "BIG CRYPTO NEWS"})
+_IMPACT_SUBSECTIONS = {"HIGH IMPACT": "🔴", "MEDIUM IMPACT": "🟠"}
 
 
 def _normalize_section(line: str) -> str | None:
@@ -56,35 +60,58 @@ def format_brief_for_telegram(brief_text: str, date_str: str) -> str:
         if not stripped:
             continue
 
-        sec = _normalize_section(stripped)
-        if sec:
-            section = sec
-            lines_out.append(f"<b>{sec}</b>")
+        upper = stripped.upper()
+
+        # Top-level section headers
+        if upper in frozenset(SECTION_ORDER):
+            section = upper
+            if lines_out and lines_out[-1]:  # blank separator before new section
+                lines_out.append("")
+            lines_out.append(f"<b>{stripped}</b>")
+            lines_out.append("")
+            continue
+
+        # UPCOMING sub-section headers (HIGH IMPACT / MEDIUM IMPACT)
+        if upper in _IMPACT_SUBSECTIONS:
+            emoji = _IMPACT_SUBSECTIONS[upper]
+            if lines_out and lines_out[-1]:
+                lines_out.append("")
+            lines_out.append(f"{emoji} <b>{stripped}</b>")
             lines_out.append("")
             continue
 
         if section is None:
             continue
 
-        if section == "WATCH NEXT":
-            if stripped.startswith("-") or stripped.startswith("•"):
-                lines_out.append(_format_watch_item(stripped))
+        # MARKET MOOD, BIG MARKET NEWS, BIG CRYPTO NEWS — plain bullet lines
+        if section in _BULLET_SECTIONS:
+            if stripped.startswith(("•", "-")):
+                text = stripped.lstrip("•- ").strip()
+                lines_out.append(f"• {html.escape(text)}")
             else:
-                lines_out.append(f"• {html.escape(stripped)}")
+                lines_out.append(html.escape(stripped))
             continue
 
-        if stripped.startswith("-") or stripped.startswith("•"):
-            lines_out.append(_format_asset_header(stripped))
+        # WATCHLIST — asset header format
+        if section == "WATCHLIST":
+            if stripped.startswith(("•", "-")):
+                lines_out.append(_format_asset_header(stripped))
+                continue
+            if re.match(r"^[12]\)\s+", stripped):
+                lines_out.append(f"  {html.escape(stripped)}")
+                if stripped.startswith("2)"):
+                    lines_out.append("")
+                continue
             continue
 
-        if re.match(r"^[12]\)\s+", stripped):
-            lines_out.append(f"  {html.escape(stripped)}")
-            # blank line between assets for mobile readability
-            if stripped.startswith("2)"):
-                lines_out.append("")
+        # UPCOMING — bullet lines (after HIGH IMPACT / MEDIUM IMPACT sub-headers)
+        if section == "UPCOMING":
+            if stripped.startswith(("•", "-")):
+                text = stripped.lstrip("•- ").strip()
+                lines_out.append(f"• {html.escape(text)}")
+            else:
+                lines_out.append(html.escape(stripped))
             continue
-
-        lines_out.append(html.escape(stripped))
 
     while lines_out and not lines_out[-1].strip():
         lines_out.pop()

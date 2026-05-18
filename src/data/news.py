@@ -177,3 +177,29 @@ def get_upcoming_earnings(watchlist_symbols: list[str], days_ahead: int = 7) -> 
     except Exception as e:
         print(f"  [news] Earnings calendar error: {e}")
         return []
+
+
+def get_general_market_news(limit: int = 10) -> list[dict]:
+    """Fetch unfiltered general stock market news from Finnhub."""
+    client = _finnhub_client()
+    if not client:
+        return []
+    try:
+        articles = client.general_news("general", min_id=0)
+        return [_format_article(a) for a in articles[:limit]]
+    except Exception as e:
+        print(f"  [news] General market news error: {e}")
+        return []
+
+
+def get_general_crypto_news(limit: int = 10) -> list[dict]:
+    """Fetch unfiltered general crypto market news from Finnhub."""
+    client = _finnhub_client()
+    if not client:
+        return []
+    try:
+        articles = client.general_news("crypto", min_id=0)
+        return [_format_article(a) for a in articles[:limit]]
+    except Exception as e:
+        print(f"  [news] General crypto news error: {e}")
+        return []
