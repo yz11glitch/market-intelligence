@@ -3,6 +3,10 @@ from typing import Optional
 from src.config.settings import settings
 from src.data.crypto import get_crypto_info
 
+_NEWS_BUCKET_KEYS = ("recent_1d", "recent_3d", "recent_7d", "recent_30d")
+_NEWS_CACHE_TTL = timedelta(minutes=30)
+_multi_window_news_cache: dict[str, dict] = {}
+
 
 def _finnhub_client():
     if not settings.FINNHUB_API_KEY:
@@ -27,6 +31,57 @@ def _format_article(article: dict) -> dict:
         "url": article.get("url", ""),
         "published": published,
     }
+
+
+def _empty_news_buckets() -> dict[str, list]:
+    return {k: [] for k in _NEWS_BUCKET_KEYS}
+
+
+def _clean_news_buckets(news_by_window: dict) -> dict[str, list]:
+    return {k: list(news_by_window.get(k, [])) for k in _NEWS_BUCKET_KEYS}
+
+
+def _news_cache_key(kind: str, symbol: str) -> str:
+    return f"{kind}:{symbol.upper()}"
+
+
+def _cache_set_news(cache_key: str, news_by_window: dict) -> None:
+    _multi_window_news_cache[cache_key] = {
+        "expires_at": datetime.now() + _NEWS_CACHE_TTL,
+        "news_by_window": _clean_news_buckets(news_by_window),
+    }
+
+
+def _cache_get_news(cache_key: str) -> dict[str, list] | None:
+    cached = _multi_window_news_cache.get(cache_key)
+    if not cached:
+        return None
+    if cached.get("expires_at") < datetime.now():
+        _multi_window_news_cache.pop(cache_key, None)
+        return None
+    return _clean_news_buckets(cached.get("news_by_window", {}))
+
+
+def _is_rate_limited_error(error: Exception) -> bool:
+    text = str(error).lower()
+    return "429" in text or "too many requests" in text or "rate limit" in text
+
+
+def _with_news_meta(
+    news_by_window: dict[str, list],
+    *,
+    rate_limited: bool,
+    used_cache: bool,
+    error: str | None = None,
+) -> dict:
+    result = _clean_news_buckets(news_by_window)
+    if rate_limited or used_cache:
+        result["_meta"] = {
+            "rate_limited": rate_limited,
+            "used_cache": used_cache,
+            "error": error or "",
+        }
+    return result
 
 
 def get_stock_news(symbol: str, days_back: int = 2, limit: int = 5) -> list[dict]:
@@ -78,7 +133,8 @@ def get_stock_news_multi_window(symbol: str) -> dict:
     Buckets are mutually exclusive; use matching bucket per timeframe section.
     """
     client = _finnhub_client()
-    empty = {"recent_1d": [], "recent_3d": [], "recent_7d": [], "recent_30d": []}
+    empty = _empty_news_buckets()
+    cache_key = _news_cache_key("stock", symbol)
     if not client:
         return empty
     now = datetime.now()
@@ -89,13 +145,20 @@ def get_stock_news_multi_window(symbol: str) -> dict:
             to=now.strftime("%Y-%m-%d"),
         )
     except Exception as e:
+        rate_limited = _is_rate_limited_error(e)
         print(f"  [news] Multi-window news error for {symbol}: {e}")
-        return empty
+        cached = _cache_get_news(cache_key)
+        if cached is not None:
+            print(f"  [news] Using cached stock news for {symbol} (ttl=30m).")
+            return _with_news_meta(cached, rate_limited=rate_limited, used_cache=True, error=str(e))
+        if rate_limited:
+            print(f"  [news] Stock news rate-limited for {symbol}; continuing with price/context only.")
+        return _with_news_meta(empty, rate_limited=rate_limited, used_cache=False, error=str(e))
 
     cutoff_1d = (now - timedelta(days=2)).timestamp()
     cutoff_3d = (now - timedelta(days=4)).timestamp()
     cutoff_7d = (now - timedelta(days=10)).timestamp()
-    buckets: dict[str, list] = {"recent_1d": [], "recent_3d": [], "recent_7d": [], "recent_30d": []}
+    buckets: dict[str, list] = _empty_news_buckets()
 
     for article in articles[:50]:
         ts = article.get("datetime", 0)
@@ -109,7 +172,9 @@ def get_stock_news_multi_window(symbol: str) -> dict:
         else:
             buckets["recent_30d"].append(fmt)
 
-    return {k: v[:8] for k, v in buckets.items()}
+    result = {k: v[:8] for k, v in buckets.items()}
+    _cache_set_news(cache_key, result)
+    return result
 
 
 def get_crypto_news_multi_window(symbol: str) -> dict:
@@ -118,21 +183,29 @@ def get_crypto_news_multi_window(symbol: str) -> dict:
     general_news typically covers only the last few days, so recent_30d is usually empty.
     """
     client = _finnhub_client()
-    empty = {"recent_1d": [], "recent_3d": [], "recent_7d": [], "recent_30d": []}
+    empty = _empty_news_buckets()
+    cache_key = _news_cache_key("crypto", symbol)
     if not client:
         return empty
     try:
         articles = client.general_news("crypto", min_id=0)
     except Exception as e:
+        rate_limited = _is_rate_limited_error(e)
         print(f"  [news] Crypto multi-window news error for {symbol}: {e}")
-        return empty
+        cached = _cache_get_news(cache_key)
+        if cached is not None:
+            print(f"  [news] Using cached crypto news for {symbol} (ttl=30m).")
+            return _with_news_meta(cached, rate_limited=rate_limited, used_cache=True, error=str(e))
+        if rate_limited:
+            print(f"  [news] Crypto news rate-limited for {symbol}; continuing with price/context only.")
+        return _with_news_meta(empty, rate_limited=rate_limited, used_cache=False, error=str(e))
 
     search_terms = get_crypto_info(symbol)["terms"]
     now = datetime.now()
     cutoff_1d = (now - timedelta(days=2)).timestamp()
     cutoff_3d = (now - timedelta(days=4)).timestamp()
     cutoff_7d = (now - timedelta(days=10)).timestamp()
-    buckets: dict[str, list] = {"recent_1d": [], "recent_3d": [], "recent_7d": [], "recent_30d": []}
+    buckets: dict[str, list] = _empty_news_buckets()
 
     for article in articles:
         ts = article.get("datetime", 0)
@@ -149,7 +222,9 @@ def get_crypto_news_multi_window(symbol: str) -> dict:
         else:
             buckets["recent_7d"].append(fmt)
 
-    return {k: v[:8] for k, v in buckets.items()}
+    result = {k: v[:8] for k, v in buckets.items()}
+    _cache_set_news(cache_key, result)
+    return result
 
 
 def get_upcoming_earnings(watchlist_symbols: list[str], days_ahead: int = 7) -> list[dict]:

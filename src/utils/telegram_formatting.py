@@ -191,6 +191,7 @@ def format_why_for_telegram(result: dict) -> str:
     cli_explanation = result.get("explanation", "")
     explanation = tg_explanation or cli_explanation
     is_tg = bool(tg_explanation)
+    explicit_warning = _clean_markdown_text(result.get("news_warning", ""))
 
     symbol = "?"
     price = "N/A"
@@ -211,6 +212,7 @@ def format_why_for_telegram(result: dict) -> str:
         "technical": [],
         "watch": [],
     }
+    warning_lines: list[str] = []
     sources: list[tuple[str, str]] = []
     current_section: str | None = None
 
@@ -225,6 +227,10 @@ def format_why_for_telegram(result: dict) -> str:
             continue
 
         if line.lower().startswith("why ") and "price:" in line.lower():
+            continue
+
+        if "rate-limit" in line.lower() or "rate limit" in line.lower():
+            warning_lines.append(line)
             continue
 
         if current_section == "sources":
@@ -256,6 +262,12 @@ def format_why_for_telegram(result: dict) -> str:
     if story:
         lines_out.extend(["", "<b>Story</b>"])
         lines_out.extend(f"• {html.escape(item)}" for item in story)
+    warning_candidates = warning_lines.copy()
+    if explicit_warning:
+        warning_candidates.insert(0, explicit_warning)
+    if warning_candidates:
+        lines_out.extend(["", "<b>Note</b>"])
+        lines_out.extend(f"• {html.escape(item)}" for item in _safe_bullets(warning_candidates, limit=1))
     if drivers:
         lines_out.extend(["", "<b>Recent drivers</b>"])
         lines_out.extend(f"• {html.escape(item)}" for item in drivers)

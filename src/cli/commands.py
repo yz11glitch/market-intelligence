@@ -25,6 +25,10 @@ from src.ai.prompts import (
 )
 from src.delivery.telegram import send_telegram_message
 from src.utils.telegram_formatting import format_brief_for_telegram
+
+NEWS_RATE_LIMIT_NOTE = (
+    "Recent news fetch was rate-limited, so this answer uses price/context data only."
+)
 from src.utils.formatting import (
     fmt_pct, fmt_price, print_header, print_section, separator, levels_table,
 )
@@ -666,12 +670,25 @@ def generate_why_text(symbol: str) -> dict:
     )
 
     # Multi-window news (one API call, three buckets)
+    news_rate_limited = False
     if crypto_asset:
-        news_by_window = get_crypto_news_multi_window(symbol)
+        news_by_window_raw = get_crypto_news_multi_window(symbol)
         market_context = _crypto_market_context(symbol)
     else:
-        news_by_window = get_stock_news_multi_window(symbol)
+        news_by_window_raw = get_stock_news_multi_window(symbol)
         market_context = _stock_market_context()
+    if isinstance(news_by_window_raw, dict):
+        meta = news_by_window_raw.get("_meta", {})
+        if isinstance(meta, dict):
+            news_rate_limited = bool(meta.get("rate_limited"))
+        news_by_window = {
+            "recent_1d": list(news_by_window_raw.get("recent_1d", [])),
+            "recent_3d": list(news_by_window_raw.get("recent_3d", [])),
+            "recent_7d": list(news_by_window_raw.get("recent_7d", [])),
+            "recent_30d": list(news_by_window_raw.get("recent_30d", [])),
+        }
+    else:
+        news_by_window = {"recent_1d": [], "recent_3d": [], "recent_7d": [], "recent_30d": []}
 
     # Upcoming events (stocks only; 14-day lookahead)
     upcoming_events: list[dict] = []
@@ -686,6 +703,8 @@ def generate_why_text(symbol: str) -> dict:
 
     prompt = build_why_prompt(facts)
     explanation = complete(prompt, SYSTEM_WHY, context="why")
+    if news_rate_limited:
+        explanation = f"{explanation}\n\n{NEWS_RATE_LIMIT_NOTE}"
 
     moves = multi_window.get("moves", {})
     change_1d = summary.get("change_pct", 0)
@@ -699,6 +718,8 @@ def generate_why_text(symbol: str) -> dict:
         "header": f"WHY {symbol}?   {header_pcts}",
         "explanation": explanation,
         "facts": facts,
+        "news_rate_limited": news_rate_limited,
+        "news_warning": NEWS_RATE_LIMIT_NOTE if news_rate_limited else "",
     }
 
 
@@ -710,6 +731,9 @@ def generate_telegram_why_text(symbol: str) -> dict:
         return result
     tg_prompt = build_telegram_why_prompt(facts)
     tg_explanation = complete(tg_prompt, SYSTEM_TELEGRAM_WHY, context="telegram_why")
+    news_warning = result.get("news_warning", "")
+    if news_warning:
+        tg_explanation = f"{tg_explanation}\n\n{news_warning}"
     return {**result, "telegram_explanation": tg_explanation}
 
 

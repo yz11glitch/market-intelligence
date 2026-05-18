@@ -48,6 +48,17 @@ WHY BTC? Price: $77,944  1D: -0.24%  7D: -5.11%  30D: +1.06%
         self.assertNotIn("**", text)
         self.assertIn('<a href="https://example.com/a">', text)
 
+    def test_why_format_shows_rate_limit_note(self) -> None:
+        text = format_why_for_telegram(
+            {
+                "header": "WHY NVDA?   Price: $120.00  1D -1.00%  7D -2.00%  30D +3.00%",
+                "explanation": "Story\n- Pullback.",
+                "news_warning": "Recent news fetch was rate-limited, so this answer uses price/context data only.",
+            }
+        )
+        self.assertIn("<b>Note</b>", text)
+        self.assertIn("rate-limited", text)
+
     def test_levels_and_tech_formats_do_not_use_pre_blocks(self) -> None:
         levels = format_levels_for_telegram(
             {
