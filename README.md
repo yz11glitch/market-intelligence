@@ -72,6 +72,8 @@ Set:
 - `ALLOWED_CHAT_IDS=-1001234567890,123456789`
 - `DATABASE_URL=postgresql://...` (optional; enables per-chat custom watchlists)
 - `ALERTS_SCAN_TOKEN=random-secret` (required for `/alerts/scan`)
+- `USAGE_REPORT_TOKEN=random-secret` (required for `/usage/daily-report`)
+- `TELEGRAM_WEBHOOK_SECRET=random-secret` (recommended; when set, `/telegram/webhook` rejects requests without a matching `X-Telegram-Bot-Api-Secret-Token` header. Allowed characters: `A-Z a-z 0-9 _ -`, 1-256 chars)
 - `ALERT_SCORE_THRESHOLD=8` (optional)
 - `ALERT_MEDIUM_THRESHOLD=6` (optional)
 - `ALERT_EVENT_TTL_HOURS=72` (optional)
@@ -91,13 +93,14 @@ Telegram webhook endpoint:
 - `POST /telegram/webhook`
 
 Alerts scan endpoint:
-- `GET /alerts/scan?token=<ALERTS_SCAN_TOKEN>`
+- `GET /alerts/scan` with header `Authorization: Bearer <ALERTS_SCAN_TOKEN>`
+  (the old `?token=` query parameter is still accepted temporarily but deprecated)
 
-Set Telegram webhook:
-`https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=<RENDER_URL>/telegram/webhook`
+Set Telegram webhook (pass the same value as `TELEGRAM_WEBHOOK_SECRET`):
+`curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" -d "url=<RENDER_URL>/telegram/webhook" -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"`
 
 Set GitHub Actions secrets for hourly scan:
-- `RENDER_APP_URL=https://market-intelligence-rf9p.onrender.com`
+- `RENDER_APP_URL=<base URL of your Render web service>`
 - `ALERTS_SCAN_TOKEN=<same as Render env>`
 
 ### Local webhook testing
