@@ -1,127 +1,69 @@
-# Market Intelligence CLI
+# Market Intelligence
 
-> **Disclaimer:** Not financial advice. Briefs and alerts are automated, may be wrong, and are for information only.
+A Python service and CLI that collect stock/crypto market data, generate LLM-assisted briefs and deliver information through a Telegram bot. Built to explore scheduled data workflows, API integration, explainable alert scoring and model-usage tracking.
 
-## Telegram daily brief (Stage 1)
+**Operational status — 4 October 2026:** Daily Brief and Daily Usage Report workflows are enabled. The hourly **Alerts Scan is paused** because its backing PostgreSQL database needs restoration. Database-dependent watchlists, settings and saved alerts should not be treated as fully operational. There is no public bot/demo account.
 
-This project can send the existing `brief` output to a Telegram group on a GitHub Actions cron job.
+> For information only, not financial advice. Automated briefs and alerts can be wrong or stale; verify data and sources independently.
 
-### Local usage
+## Two separate processing paths
 
-1. Generate brief only:
-   `python main.py brief`
-2. Generate + send to Telegram:
-   `python main.py brief --send-telegram`
+```mermaid
+flowchart LR
+    G[GitHub Actions / CLI / Telegram command] --> F[Financial and news APIs]
+    F --> B[Facts and technical analysis]
+    B --> L[LLM brief via LiteLLM]
+    L --> T[Telegram formatting and delivery]
+    F --> R[Rule-based alert scorer]
+    R --> P[(PostgreSQL alert events)]
+    P --> Q[Saved-alert inspection]
+```
 
-`--send-telegram` requires:
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
+Briefs use yfinance, Finnhub and crypto-data integrations, with LiteLLM calling configured OpenAI models. The alert scorer uses explicit terms, source weights and watchlist matches; an LLM does not determine alert impact scores. Scans normalize and deduplicate events before persistence.
 
-Optional daily brief pinning:
-- `TELEGRAM_PIN_DAILY_BRIEF=true` to pin the sent daily brief message.
-- `TELEGRAM_UNPIN_PREVIOUS_DAILY_BRIEF=true` to unpin the previously tracked pinned daily brief before pinning the new one.
-- Defaults are `false`.
+FastAPI exposes the Telegram webhook, health endpoint and scheduled task endpoints. Bot commands include `/brief`, `/why`, `/levels`, `/tech`, `/alerts` and per-chat watchlist/settings management. Allow-listed chats restrict bot use; modifying group settings requires an admin check. PostgreSQL storage uses psycopg and hand-written SQL. YAML watchlists provide the fallback when no database is configured.
 
-### Telegram setup
+The package separates [`data`](src/data), [`analysis`](src/analysis), [`ai`](src/ai), [`alerts`](src/alerts), [`storage`](src/storage), [`delivery`](src/delivery) and [`web`](src/web). Usage logging records model token counts and estimated cost.
 
-1. Create a bot with **BotFather** and copy the bot token.
-2. Add the bot to your target Telegram group.
-3. Get the group chat ID and set `TELEGRAM_CHAT_ID`.
-4. To pin daily briefs, make the bot a group admin and grant **Pin messages** permission.
+## Inspect locally
 
-### GitHub Actions setup
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env
+python main.py --help
+uvicorn src.web.app:app --host 127.0.0.1 --port 8000
+```
 
-Add these repository secrets:
-- `OPENAI_API_KEY`
-- `FINNHUB_API_KEY`
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
+Open `http://127.0.0.1:8000/docs` to inspect the API, or `/health` for a local health check. A health response does not validate database connectivity or delivery.
 
-Workflow file:
-- `.github/workflows/daily-brief.yml`
-- `.github/workflows/alerts-scan.yml` (hourly rule-based news scan; no Telegram send yet)
+![Actual local FastAPI endpoint documentation](docs/media/api-desktop.png)
 
-Run it manually from **Actions → Daily Brief → Run workflow** to test.
+This screenshot is the actual API documentation, not a market dashboard or evidence of a running alert schedule. A sanitized Telegram brief capture is still missing; no chat history or invented Telegram UI is included. [Capture notes](docs/media/README.md).
 
-## Telegram group commands (Stage 2)
+For data/LLM commands, fill the relevant API keys in `.env`:
 
-Webhook backend supports slash commands in allowed chats:
-- `/start`
-- `/brief`
-- `/alerts`
-- `/why BTC`
-- `/levels ETH`
-- `/tech BTC`
-- `/adminhelp`
-- `/settings`
-- `/set_branding Crypto Crew`
-- `/set_timezone Asia/Singapore`
-- `/set_brief_time 09:00`
-- `/set_pin_brief on`
-- `/watchlist show`
-- `/watchlist add BTC ETH SOL`
-- `/watchlist remove NVDA TSLA`
-- `/help`
+```bash
+python main.py brief
+python main.py levels BTC
+```
 
-Non-command group messages are ignored.
+The `levels` command needs market data but does not call the LLM. `python main.py brief --send-telegram` additionally requires your own `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, and sends a real message.
 
-### Environment
+## Hosting and schedules
 
-Set:
-- `TELEGRAM_BOT_TOKEN`
-- `ALLOWED_CHAT_IDS=-1001234567890,123456789`
-- `DATABASE_URL=postgresql://...` (optional; enables per-chat custom watchlists)
-- `ALERTS_SCAN_TOKEN=random-secret` (required for `/alerts/scan`)
-- `USAGE_REPORT_TOKEN=random-secret` (required for `/usage/daily-report`)
-- `TELEGRAM_WEBHOOK_SECRET=random-secret` (recommended; when set, `/telegram/webhook` rejects requests without a matching `X-Telegram-Bot-Api-Secret-Token` header. Allowed characters: `A-Z a-z 0-9 _ -`, 1-256 chars)
-- `ALERT_SCORE_THRESHOLD=8` (optional)
-- `ALERT_MEDIUM_THRESHOLD=6` (optional)
-- `ALERT_EVENT_TTL_HOURS=72` (optional)
+- Daily Brief runs through GitHub Actions at 01:00 UTC. Configure repository secrets for OpenAI, Finnhub and Telegram before enabling it in your own deployment.
+- Alerts Scan and the usage-report task call the FastAPI service with `Authorization: Bearer <token>`. Configure the service and corresponding workflow secrets from [.env.example](.env.example).
+- Set `ALLOWED_CHAT_IDS` and `TELEGRAM_WEBHOOK_SECRET`, then register the Telegram webhook with the same `secret_token`. The secret-header check is enforced only when that environment variable is configured.
+- To resume Alerts Scan, restore PostgreSQL, update `DATABASE_URL`, validate a manual scan, then enable the workflow. Do not infer service readiness from the enabled daily brief: that path does not use PostgreSQL.
 
-`ALLOWED_CHAT_IDS` is a comma-separated allowlist. Chats not in this list are ignored silently.
-If `DATABASE_URL` is not set, `/brief` and `/watchlist show` use `config/watchlist.yaml`, `/watchlist add/remove` is disabled, and `/settings` / `/set_*` commands are disabled.
+## Test evidence and limitations
 
-### Run on Render
+**78 pytest tests passed locally on 4 October 2026.** They cover alert scoring/scanning, watchlists, settings, command parsing, Telegram formatting, webhook and endpoint authentication, news resilience and safe LLM error responses.
 
-Start command:
-`uvicorn src.web.app:app --host 0.0.0.0 --port $PORT`
+```bash
+python -m pytest -q
+```
 
-Health endpoint:
-- `GET /health`
-
-Telegram webhook endpoint:
-- `POST /telegram/webhook`
-
-Alerts scan endpoint:
-- `GET /alerts/scan` with header `Authorization: Bearer <ALERTS_SCAN_TOKEN>`
-  (the old `?token=` query parameter is still accepted temporarily but deprecated)
-
-Set Telegram webhook (pass the same value as `TELEGRAM_WEBHOOK_SECRET`):
-`curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" -d "url=<RENDER_URL>/telegram/webhook" -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"`
-
-Set GitHub Actions secrets for hourly scan:
-- `RENDER_APP_URL=<base URL of your Render web service>`
-- `ALERTS_SCAN_TOKEN=<same as Render env>`
-
-### Local webhook testing
-
-You can run the app locally with uvicorn and send sample updates to `/telegram/webhook` using curl or Postman.
-
-## Command roles
-
-- `/start` = quick onboarding + key commands for this chat
-- `/brief` = market story update (news, macro, catalysts, events)
-- `/alerts` = read-only saved high/medium alert events from the last 24 hours
-- `/why TICKER` = mixed narrative with sources
-- `/levels TICKER` = raw levels/moving-average numbers
-- `/tech TICKER` = interpreted technical read from existing technical data
-- `/settings` = show chat settings (branding/title, timezone, brief time, pin setting, custom watchlist)
-- `/set_branding TEXT` = set brief title branding for this chat (group admins only in groups)
-- `/set_timezone TIMEZONE` = set timezone (group admins only in groups)
-- `/set_brief_time HH:MM` = store preferred brief time for future scheduled briefs (group admins only in groups)
-- `/set_pin_brief on|off` = control pin behavior for Telegram `/brief` in this chat (group admins only in groups)
-- `/watchlist show` = show current chat watchlist source + symbols
-- `/watchlist add TICKER [TICKER...]` = add one or more symbols to current chat watchlist (group admins only in groups)
-- `/watchlist remove TICKER [TICKER...]` = remove one or more symbols from current chat watchlist (group admins only in groups)
-- `/help` = member-focused command reference
-- `/adminhelp` = admin-only setup/config command reference
+The suite mocks external dependencies; live financial feeds, bot delivery and the restored database need separate integration validation. API availability/rate limits and LLM summaries affect reliability. A deprecated query-token compatibility path remains alongside bearer authentication. Preferred per-chat brief times are stored settings, not independent per-chat schedulers. This is an information/automation project, with no order-execution functionality.
