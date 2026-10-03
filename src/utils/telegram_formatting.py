@@ -1,6 +1,8 @@
 import html
 import re
 
+from src.ai.client import AI_UNAVAILABLE_TEXT
+
 
 SECTION_ORDER = ("MARKET MOOD", "BIG MARKET NEWS", "BIG CRYPTO NEWS", "WATCHLIST", "UPCOMING")
 _WHY_HEADER_RE = re.compile(
@@ -232,7 +234,7 @@ def format_why_for_telegram(result: dict) -> str:
         if line.lower().startswith("why ") and "price:" in line.lower():
             continue
 
-        if "rate-limit" in line.lower() or "rate limit" in line.lower():
+        if "rate-limit" in line.lower() or "rate limit" in line.lower() or line == AI_UNAVAILABLE_TEXT:
             warning_lines.append(line)
             continue
 

@@ -1,7 +1,14 @@
+import logging
+
 import litellm
 from src.config.settings import settings
 
 litellm.drop_params = True  # silently ignore params unsupported by a provider
+
+logger = logging.getLogger(__name__)
+
+# Returned instead of raw provider error text, which must not reach chat users.
+AI_UNAVAILABLE_TEXT = "AI summary is temporarily unavailable. Please try again later."
 
 
 def complete(
@@ -30,7 +37,11 @@ def complete(
         _log_usage(response, model, context)
         return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"[AI error: {e}]"
+        logger.warning(
+            "LLM call failed (context=%s, model=%s): %s: %s",
+            context, model, type(e).__name__, str(e)[:300],
+        )
+        return AI_UNAVAILABLE_TEXT
 
 
 def _log_usage(response: object, model: str, context: str) -> None:
