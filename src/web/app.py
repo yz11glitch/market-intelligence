@@ -29,6 +29,7 @@ from src.storage import (
     set_chat_pin_daily_brief,
     set_chat_timezone,
 )
+from src.web.auth import is_request_authorized
 from src.utils.telegram_formatting import (
     format_brief_for_telegram,
     format_levels_for_telegram,
@@ -499,9 +500,7 @@ def health() -> dict[str, str]:
 
 @app.get("/usage/daily-report")
 async def usage_daily_report(request: Request) -> JSONResponse:
-    token = request.query_params.get("token", "")
-    expected = settings.USAGE_REPORT_TOKEN
-    if not expected or token != expected:
+    if not is_request_authorized(request, settings.USAGE_REPORT_TOKEN, "/usage/daily-report"):
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
 
     from src.ai.usage import load_records, build_usage_report, _sum_records
@@ -519,9 +518,7 @@ async def usage_daily_report(request: Request) -> JSONResponse:
 
 @app.get("/alerts/scan")
 async def alerts_scan(request: Request) -> JSONResponse:
-    token = request.query_params.get("token", "")
-    expected = settings.ALERTS_SCAN_TOKEN
-    if not expected or token != expected:
+    if not is_request_authorized(request, settings.ALERTS_SCAN_TOKEN, "/alerts/scan"):
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     summary = scan_alert_events()
     status_code = 200 if summary.get("ok") else 500

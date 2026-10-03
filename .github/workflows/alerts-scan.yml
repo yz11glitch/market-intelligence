@@ -32,5 +32,21 @@ jobs:
           RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
           ALERTS_SCAN_TOKEN: ${{ secrets.ALERTS_SCAN_TOKEN }}
         run: |
-          curl --fail --show-error --silent \
-            "${RENDER_APP_URL}/alerts/scan?token=${ALERTS_SCAN_TOKEN}"
+          body_file="$(mktemp)"
+          call() {
+            curl --silent --show-error --max-time 300 -o "${body_file}" -w '%{http_code}' "$@"
+          }
+          status=$(call -H "Authorization: Bearer ${ALERTS_SCAN_TOKEN}" \
+            "${RENDER_APP_URL}/alerts/scan") || status="000"
+          if [ "${status}" = "403" ]; then
+            # TRANSITION: a server deployed before header auth only accepts ?token=.
+            # Remove this fallback once the header-auth server is confirmed live.
+            echo "::warning::Header auth rejected (HTTP 403); retrying with legacy query-string token."
+            status=$(call "${RENDER_APP_URL}/alerts/scan?token=${ALERTS_SCAN_TOKEN}") || status="000"
+          fi
+          echo "HTTP ${status}"
+          if [ "${status}" != "200" ]; then
+            echo "::error::Alerts scan failed (HTTP ${status})"
+            exit 1
+          fi
+          cat "${body_file}"
