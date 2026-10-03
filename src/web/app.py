@@ -1,5 +1,7 @@
 import html
+import logging
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
@@ -29,7 +31,7 @@ from src.storage import (
     set_chat_pin_daily_brief,
     set_chat_timezone,
 )
-from src.web.auth import is_request_authorized
+from src.web.auth import is_request_authorized, is_telegram_webhook_authorized
 from src.utils.telegram_formatting import (
     format_brief_for_telegram,
     format_levels_for_telegram,
@@ -37,7 +39,24 @@ from src.utils.telegram_formatting import (
     format_why_for_telegram,
 )
 
-app = FastAPI()
+logger = logging.getLogger(__name__)
+
+
+def _warn_if_webhook_secret_missing() -> None:
+    if not settings.TELEGRAM_WEBHOOK_SECRET:
+        logger.warning(
+            "TELEGRAM_WEBHOOK_SECRET is not set: /telegram/webhook accepts unauthenticated "
+            "requests. Set it and re-register the webhook with setWebhook secret_token."
+        )
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    _warn_if_webhook_secret_missing()
+    yield
+
+
+app = FastAPI(lifespan=_lifespan)
 
 
 def _allowed_chat_ids() -> set[str]:
@@ -168,7 +187,10 @@ def _format_watchlist_text(chat_id: str) -> str:
 
 def can_manage_chat(chat_id: str, user_id: str, chat_type: str) -> bool:
     if chat_type == "private":
-        return True
+        # In a real private chat the chat id is the user's own id. Requiring that
+        # stops an update claiming type "private" with a group's chat id from
+        # inheriting admin rights over that group.
+        return bool(user_id) and str(chat_id) == str(user_id)
     if not _is_group_chat(chat_type):
         return False
     try:
@@ -526,7 +548,9 @@ async def alerts_scan(request: Request) -> JSONResponse:
 
 
 @app.post("/telegram/webhook")
-async def telegram_webhook(request: Request) -> dict[str, bool]:
+async def telegram_webhook(request: Request):
+    if not is_telegram_webhook_authorized(request, settings.TELEGRAM_WEBHOOK_SECRET):
+        return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     payload = await request.json()
     if not isinstance(payload, dict):
         return {"ok": True}

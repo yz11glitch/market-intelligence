@@ -7,6 +7,8 @@ from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 
+TELEGRAM_SECRET_HEADER = "X-Telegram-Bot-Api-Secret-Token"
+
 
 def tokens_match(provided: str, expected: str) -> bool:
     """Constant-time comparison; an empty expected or provided token never matches."""
@@ -40,3 +42,9 @@ def is_request_authorized(request: Request, expected: str, endpoint: str) -> boo
         return True
     return False
 
+
+def is_telegram_webhook_authorized(request: Request, expected_secret: str) -> bool:
+    """Verify Telegram's secret_token header. Not enforced when no secret is configured."""
+    if not expected_secret:
+        return True
+    return tokens_match(request.headers.get(TELEGRAM_SECRET_HEADER, ""), expected_secret)

@@ -28,6 +28,7 @@ class Settings:
         "TELEGRAM_UNPIN_PREVIOUS_DAILY_BRIEF", False
     )
     ALLOWED_CHAT_IDS: str = os.getenv("ALLOWED_CHAT_IDS", "")
+    TELEGRAM_WEBHOOK_SECRET: str = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
     USAGE_REPORT_TOKEN: str = os.getenv("USAGE_REPORT_TOKEN", "")
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     ALERTS_SCAN_TOKEN: str = os.getenv("ALERTS_SCAN_TOKEN", "")
