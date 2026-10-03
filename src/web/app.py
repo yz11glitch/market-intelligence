@@ -38,6 +38,7 @@ from src.storage import (
 )
 from src.web.auth import is_request_authorized, is_telegram_webhook_authorized
 from src.utils.telegram_formatting import (
+    DISCLAIMER_HTML,
     format_brief_for_telegram,
     format_levels_for_telegram,
     format_tech_for_telegram,
@@ -160,7 +161,10 @@ def _format_alerts_for_telegram(events: list[dict]) -> str:
                 meta_parts.append(f"seen: {first_seen}")
             lines.append(f"  <i>{html.escape(' | '.join(meta_parts))}</i>")
 
-    return "\n".join(lines) if lines else "No saved market alerts found."
+    if not lines:
+        return "No saved market alerts found."
+    lines.extend(["", DISCLAIMER_HTML])
+    return "\n".join(lines)
 
 
 def _format_watchlist_text(chat_id: str) -> str:

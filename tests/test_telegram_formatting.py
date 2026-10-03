@@ -1,6 +1,8 @@
 import unittest
 
 from src.utils.telegram_formatting import (
+    DISCLAIMER_HTML,
+    format_brief_for_telegram,
     format_levels_for_telegram,
     format_tech_for_telegram,
     format_why_for_telegram,
@@ -97,6 +99,12 @@ Read:
         self.assertNotIn("<pre>", tech)
         self.assertIn("<b>LEVELS BTC</b>", levels)
         self.assertIn("<b>TECH BTC</b>", tech)
+
+    def test_brief_ends_with_disclaimer_footer(self) -> None:
+        text = format_brief_for_telegram("MARKET MOOD\n- Risk-on tone.", "2026-10-03")
+        self.assertIn("Risk-on tone.", text)
+        self.assertTrue(text.endswith("\n\n" + DISCLAIMER_HTML))
+        self.assertEqual(text.count("Not financial advice"), 1)
 
 
 if __name__ == "__main__":

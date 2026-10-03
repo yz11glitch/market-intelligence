@@ -1,5 +1,7 @@
 # Market Intelligence CLI
 
+> **Disclaimer:** Not financial advice. Briefs and alerts are automated, may be wrong, and are for information only.
+
 ## Telegram daily brief (Stage 1)
 
 This project can send the existing `brief` output to a Telegram group on a GitHub Actions cron job.

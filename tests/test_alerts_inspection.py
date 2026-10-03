@@ -41,6 +41,10 @@ class AlertsInspectionTests(unittest.TestCase):
         self.assertIn("🟠 <b>MEDIUM IMPACT</b>", text)
         self.assertIn('<a href="https://example.com/a">Fed shocks markets</a>', text)
         self.assertIn("ETF inflows rise", text)
+        self.assertTrue(text.endswith("<i>Not financial advice. For information only.</i>"))
+
+    def test_empty_alerts_message_has_no_disclaimer(self) -> None:
+        self.assertEqual(_format_alerts_for_telegram([]), "No saved market alerts found.")
 
 
 if __name__ == "__main__":

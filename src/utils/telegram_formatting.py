@@ -19,6 +19,8 @@ _TECH_HEADER_RE = re.compile(
 _CONFIDENCE_RE = re.compile(r"\[Confidence:[^\]]+\]", re.IGNORECASE)
 _URL_RE = re.compile(r"https?://\S+")
 
+DISCLAIMER_HTML = "<i>Not financial advice. For information only.</i>"
+
 
 _BULLET_SECTIONS = frozenset({"MARKET MOOD", "BIG MARKET NEWS", "BIG CRYPTO NEWS"})
 _IMPACT_SUBSECTIONS = {"HIGH IMPACT": "🔴", "MEDIUM IMPACT": "🟠"}
@@ -115,6 +117,7 @@ def format_brief_for_telegram(brief_text: str, date_str: str, brief_title: str =
 
     while lines_out and not lines_out[-1].strip():
         lines_out.pop()
+    lines_out.extend(["", DISCLAIMER_HTML])
     return "\n".join(lines_out)
 
 
