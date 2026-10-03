@@ -8,7 +8,12 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from src.alerts.scanner import get_saved_alert_events, scan_alert_events
+from src.alerts.scanner import (
+    ERROR_DB_NOT_CONFIGURED,
+    ERROR_DB_UNAVAILABLE,
+    get_saved_alert_events,
+    scan_alert_events,
+)
 from src.bot.commands import ParsedCommand, parse_command
 from src.cli.commands import (
     generate_brief_text,
@@ -543,7 +548,12 @@ async def alerts_scan(request: Request) -> JSONResponse:
     if not is_request_authorized(request, settings.ALERTS_SCAN_TOKEN, "/alerts/scan"):
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     summary = scan_alert_events()
-    status_code = 200 if summary.get("ok") else 500
+    if summary.get("ok"):
+        status_code = 200
+    elif summary.get("error") in {ERROR_DB_NOT_CONFIGURED, ERROR_DB_UNAVAILABLE}:
+        status_code = 503  # dependency/config problem, not a bug in the scan itself
+    else:
+        status_code = 500
     return JSONResponse(summary, status_code=status_code)
 
 

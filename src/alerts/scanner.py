@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -7,6 +8,15 @@ from src.config.settings import settings
 from src.data.news import get_general_crypto_news, get_general_market_news
 from src.storage.db import get_connection, is_database_configured
 from src.storage.watchlists import load_default_watchlist
+
+logger = logging.getLogger(__name__)
+
+# Stable error codes returned by scan_alert_events(). The "detail" text is safe to
+# show in public CI logs: it never includes the raw exception message, which for
+# connection errors can contain the database host/user.
+ERROR_DB_NOT_CONFIGURED = "database_not_configured"
+ERROR_DB_UNAVAILABLE = "database_unavailable"
+ERROR_SCAN_FAILED = "scan_failed"
 
 
 def _headline_fingerprint(headline: str) -> str:
@@ -99,18 +109,35 @@ def scan_alert_events() -> dict:
         "medium": 0,
     }
     if not is_database_configured():
-        return {**result, "ok": False, "error": "DATABASE_URL is not configured."}
+        logger.error("Alerts scan: DATABASE_URL is not set on this server.")
+        return {
+            **result,
+            "ok": False,
+            "error": ERROR_DB_NOT_CONFIGURED,
+            "detail": "DATABASE_URL is not set on the server; set it in the hosting environment.",
+        }
+
+    # Connect before fetching news so a database outage fails fast and does not
+    # spend news API quota.
+    try:
+        conn = get_connection()
+    except Exception as exc:
+        logger.exception("Alerts scan: could not connect to the database.")
+        return {
+            **result,
+            "ok": False,
+            "error": ERROR_DB_UNAVAILABLE,
+            "detail": (
+                f"Could not connect to Postgres ({type(exc).__name__}). Check that DATABASE_URL "
+                "points at a running database (see server logs for the full error)."
+            ),
+        }
 
     market = get_general_market_news(limit=25)
     crypto = get_general_crypto_news(limit=25)
     watchlist_terms = _watchlist_terms()
     now_utc = datetime.now(timezone.utc)
     ttl = timedelta(hours=max(1, settings.ALERT_EVENT_TTL_HOURS))
-
-    try:
-        conn = get_connection()
-    except Exception as exc:
-        return {**result, "ok": False, "error": str(exc)}
 
     try:
         for category, articles in (("market", market), ("crypto", crypto)):
@@ -157,8 +184,14 @@ def scan_alert_events() -> dict:
         conn.commit()
         return result
     except Exception as exc:
+        logger.exception("Alerts scan: failed while processing news events.")
         conn.rollback()
-        return {**result, "ok": False, "error": str(exc)}
+        return {
+            **result,
+            "ok": False,
+            "error": ERROR_SCAN_FAILED,
+            "detail": f"Scan failed ({type(exc).__name__}); see server logs for the full error.",
+        }
     finally:
         conn.close()
 

@@ -45,8 +45,31 @@ jobs:
             status=$(call "${RENDER_APP_URL}/alerts/scan?token=${ALERTS_SCAN_TOKEN}") || status="000"
           fi
           echo "HTTP ${status}"
-          if [ "${status}" != "200" ]; then
-            echo "::error::Alerts scan failed (HTTP ${status})"
-            exit 1
+          if [ "${status}" = "200" ]; then
+            cat "${body_file}"
+            exit 0
           fi
-          cat "${body_file}"
+          # Only print the server's error code/detail fields: they are written to be safe
+          # for this public log. Older server builds put raw exception text in "error",
+          # which can include the database host, so that is not echoed.
+          reason=$(python3 - "${body_file}" <<'PY' || true
+          import json, sys
+          try:
+              data = json.load(open(sys.argv[1]))
+          except Exception:
+              data = {}
+          if isinstance(data, dict) and data.get("detail"):
+              print(f"{data.get('error', 'error')}: {data['detail']}")
+          PY
+          )
+          case "${status}" in
+            000) hint="request did not complete (timeout or network error; Render may be cold-starting or down)" ;;
+            403) hint="token rejected: ALERTS_SCAN_TOKEN secret does not match the server's ALERTS_SCAN_TOKEN" ;;
+            503) hint="server dependency/config problem (database); fix the Render environment, not the code" ;;
+            *)   hint="see Render service logs" ;;
+          esac
+          echo "::error::Alerts scan failed (HTTP ${status}): ${reason:-${hint}}"
+          if [ -n "${reason}" ]; then
+            echo "Hint: ${hint}"
+          fi
+          exit 1
